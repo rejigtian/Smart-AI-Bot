@@ -69,7 +69,18 @@ Smart-AI-Bot 是一个面向 Android 应用 QA 团队（或希望自动化操作
 - **可观测**：Token 消耗、感知/LLM/动作三阶段耗时、Pass Rate 趋势
 - **CI/CD**：CLI 集成、Webhook 通知（飞书/钉钉/Slack）
 
-完整对比和路线图：[竞品对比](docs/comparison.md) · [Roadmap](docs/roadmap.md)
+完整对比和路线图：[竞品对比](docs/comparison.zh-CN.md) · [Roadmap](docs/roadmap.md)
+
+---
+
+## 产品截图
+
+| | |
+|---|---|
+| ![Portal App](assets/portal-app.png) | ![快速任务](assets/quick-task.png) |
+| **Portal App** — 设置 WebSocket URL + Token，启用无障碍服务，点 Connect 即可让设备上线 | **快速任务** — 用自然语言描述要做的事，选设备 + 模型，点 Run |
+| ![测试报告](assets/test-report.png) | ![步骤回放](assets/step-replay.png) |
+| **测试报告** — Pass / Fail 统计、Pass Rate、Token 消耗、耗时，每个 case 都附 Verifier 判定理由 | **步骤回放** — 每一步都有截图、Agent 思考、调用的工具（例如 `tap_element({"index": 5})`） |
 
 ---
 

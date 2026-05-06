@@ -71,6 +71,17 @@ Full comparison and roadmap: [Comparison](docs/comparison.md) · [Roadmap](docs/
 
 ---
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Portal App on Android](assets/portal-app.png) | ![Quick Task in Web UI](assets/quick-task.png) |
+| **Portal App** — pair the device by setting WebSocket URL + Token, enable Accessibility, and tap Connect | **Quick Task** — describe a task in plain language, pick a device + LLM model, hit Run |
+| ![Test Report](assets/test-report.png) | ![Step Replay](assets/step-replay.png) |
+| **Test Report** — pass/fail counts, pass rate, token usage, run time, and per-case verdict with verifier reasoning | **Step Replay** — every action with screenshot, agent reasoning, and tool call (e.g. `tap_element({"index": 5})`) |
+
+---
+
 ## Quick Start
 
 ### Prerequisites
