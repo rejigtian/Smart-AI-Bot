@@ -8,7 +8,7 @@
 
 ## Demo
 
-<video src="https://github.com/rejigtian/smart_bot/releases/download/v1.0.0/0506.4.mp4" controls width="100%"></video>
+<video src="https://github.com/rejigtian/Smart-AI-Bot/releases/download/v1.0.0/example.mp4" controls width="100%"></video>
 
 The demo above shows four panels recorded simultaneously for the same test case:
 
@@ -19,7 +19,7 @@ The demo above shows four panels recorded simultaneously for the same test case:
 
 The whole sequence is unedited — what you see is the agent operating the device end-to-end based on a single plain-language test case.
 
-> **Note**: if the video doesn't render in your viewer, [download it directly](https://github.com/rejigtian/smart_bot/releases/download/v1.0.0/0506.4.mp4) (15 MB) or browse the [Releases page](https://github.com/rejigtian/smart_bot/releases).
+> **Note**: if the video doesn't render in your viewer, [download it directly](https://github.com/rejigtian/Smart-AI-Bot/releases/download/v1.0.0/example.mp4) (15 MB) or browse the [Releases page](https://github.com/rejigtian/Smart-AI-Bot/releases).
 
 ---
 
@@ -81,8 +81,8 @@ Full comparison and roadmap: [Comparison](docs/comparison.md) · [Roadmap](docs/
 ### Run the backend & frontend
 
 ```bash
-git clone https://github.com/rejigtian/smart_bot.git
-cd smart_bot
+git clone https://github.com/rejigtian/Smart-AI-Bot.git
+cd Smart-AI-Bot
 
 # Backend
 cd backend
@@ -108,7 +108,7 @@ Open http://localhost:5173 and drop your LLM API keys into Settings.
 
 **Option A — prebuilt APK (fastest)**
 
-Download from the [latest release](https://github.com/rejigtian/smart_bot/releases/latest) and install:
+Download from the [latest release](https://github.com/rejigtian/Smart-AI-Bot/releases/latest) and install:
 
 ```bash
 adb install -r ~/Downloads/app-v1.0.0.apk

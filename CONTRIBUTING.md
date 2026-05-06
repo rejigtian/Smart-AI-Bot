@@ -7,8 +7,8 @@ Thanks for your interest! This guide covers how to set up a dev environment, the
 ## Quick start for contributors
 
 ```bash
-git clone https://github.com/rejigtian/smart_bot.git
-cd smart_bot
+git clone https://github.com/rejigtian/Smart-AI-Bot.git
+cd Smart-AI-Bot
 
 # Backend
 cd backend

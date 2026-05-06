@@ -8,7 +8,7 @@
 
 ## 演示视频
 
-<video src="https://github.com/rejigtian/smart_bot/releases/download/v1.0.0/0506.4.mp4" controls width="100%"></video>
+<video src="https://github.com/rejigtian/Smart-AI-Bot/releases/download/v1.0.0/example.mp4" controls width="100%"></video>
 
 视频里同时录制了四个画面，演示同一条测试用例的执行：
 
@@ -19,7 +19,7 @@
 
 全程未经剪辑，展示的就是 Agent 根据一条自然语言测试用例，端到端操作设备的完整过程。
 
-> **如果视频没显示**：[直接下载](https://github.com/rejigtian/smart_bot/releases/download/v1.0.0/0506.4.mp4)（15 MB），或访问 [Releases 页](https://github.com/rejigtian/smart_bot/releases)。
+> **如果视频没显示**：[直接下载](https://github.com/rejigtian/Smart-AI-Bot/releases/download/v1.0.0/example.mp4)（15 MB），或访问 [Releases 页](https://github.com/rejigtian/Smart-AI-Bot/releases)。
 
 ---
 
@@ -83,8 +83,8 @@ Smart-AI-Bot 是一个面向 Android 应用 QA 团队（或希望自动化操作
 ### 启动后端 + 前端
 
 ```bash
-git clone https://github.com/rejigtian/smart_bot.git
-cd smart_bot
+git clone https://github.com/rejigtian/Smart-AI-Bot.git
+cd Smart-AI-Bot
 
 # 后端
 cd backend
@@ -110,7 +110,7 @@ npm run dev
 
 **方式 A — 直接下载预编译 APK（最快）**
 
-从 [最新 release](https://github.com/rejigtian/smart_bot/releases/latest) 下载后：
+从 [最新 release](https://github.com/rejigtian/Smart-AI-Bot/releases/latest) 下载后：
 
 ```bash
 adb install -r ~/Downloads/app-v1.0.0.apk
