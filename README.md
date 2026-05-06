@@ -8,7 +8,7 @@
 
 ## Demo
 
-<video src="https://github.com/user-attachments/assets/b700f19a-fa30-4160-ab53-5b16b7187c34" controls width="100%"></video>
+<video src="https://github.com/rejigtian/smart_bot/releases/download/v1.0.0/0506.4.mp4" controls width="100%"></video>
 
 The demo above shows four panels recorded simultaneously for the same test case:
 
@@ -19,7 +19,7 @@ The demo above shows four panels recorded simultaneously for the same test case:
 
 The whole sequence is unedited — what you see is the agent operating the device end-to-end based on a single plain-language test case.
 
-> **Note**: if the video doesn't render in your viewer, [download it directly](https://github.com/rejigtian/smart_bot/raw/main/assets/demo.mp4) (1.4 MB) or watch it on the [latest release page](https://github.com/rejigtian/smart_bot/releases).
+> **Note**: if the video doesn't render in your viewer, [download it directly](https://github.com/rejigtian/smart_bot/releases/download/v1.0.0/0506.4.mp4) (15 MB) or browse the [Releases page](https://github.com/rejigtian/smart_bot/releases).
 
 ---
 
