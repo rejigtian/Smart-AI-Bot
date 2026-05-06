@@ -8,7 +8,7 @@
 
 ## 演示视频
 
-<video src="https://github.com/rejigtian/smart_bot/raw/main/assets/demo.mp4" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/b700f19a-fa30-4160-ab53-5b16b7187c34" controls width="100%"></video>
 
 视频里同时录制了四个画面，演示同一条测试用例的执行：
 

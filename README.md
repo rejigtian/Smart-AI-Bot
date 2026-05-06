@@ -8,7 +8,7 @@
 
 ## Demo
 
-<video src="https://github.com/rejigtian/smart_bot/raw/main/assets/demo.mp4" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/b700f19a-fa30-4160-ab53-5b16b7187c34" controls width="100%"></video>
 
 The demo above shows four panels recorded simultaneously for the same test case:
 
