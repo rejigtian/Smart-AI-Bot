@@ -154,8 +154,8 @@ Android 设备 (Portal App)
 | [Android Portal](docs/android-optimization.md) | Portal App 性能与连接稳定性 |
 | [Test KB 使用](test_knowledge/PLAN.md) | 测试知识库构建、AUTO/HUMAN 区段、检索机制 |
 | [Roadmap](docs/roadmap.md) | 已完成功能清单 + 待办优先级 |
-| [竞品对比](docs/comparison.md) | DroidRun / Midscene / AutoGLM 技术路线对比 |
-| [故障排查](docs/troubleshooting.md) | 常见问题（连接、截图、识别）排查清单 |
+| [竞品对比](docs/comparison.zh-CN.md) | DroidRun / Midscene / AutoGLM 技术路线对比 |
+| [故障排查](docs/troubleshooting.zh-CN.md) | 常见问题（连接、截图、识别）排查清单 |
 
 ---
 

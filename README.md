@@ -153,8 +153,8 @@ Detailed design: [`docs/agent-architecture.md`](docs/agent-architecture.md).
 | [Android Portal](docs/android-optimization.md) | Portal App performance & connection stability |
 | [Test KB](test_knowledge/PLAN.md) | Building the test knowledge base for your own app |
 | [Roadmap](docs/roadmap.md) | Done features + priorities |
-| [Comparison](docs/comparison.md) | DroidRun / Midscene / AutoGLM technical comparison (Chinese) |
-| [Troubleshooting](docs/troubleshooting.md) | Common issues — connection / screenshot / recognition (Chinese) |
+| [Comparison](docs/comparison.md) | DroidRun / Midscene / AutoGLM technical comparison |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues — connection / screenshot / recognition |
 
 ---
 
