@@ -42,3 +42,9 @@ test_knowledge/common/
 
 # Personal scratch notes (promotion plan, todo lists, draft posts) — never commit.
 notes/
+
+# Raw demo / recording exports kept in repo root for editing — never commit.
+# Compressed final outputs go in assets/ and are committed.
+/example_*.gif
+/example_*.mp4
+/example_*.mov

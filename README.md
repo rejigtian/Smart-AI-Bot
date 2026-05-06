@@ -6,6 +6,23 @@
 
 ---
 
+## Demo
+
+<video src="https://github.com/rejigtian/smart_bot/raw/main/assets/demo.mp4" controls width="100%"></video>
+
+The demo above shows four panels recorded simultaneously for the same test case:
+
+1. **Phone camera (top-left)** — physical proof: the device sits on a stand, no hands in the frame, system "Show Touches" is enabled so every synthetic tap appears as a white dot on the screen.
+2. **Phone screen mirror (top-middle)** — the actual UI as seen by the AI agent.
+3. **Backend log (top-right)** — live `uvicorn` output: agent thoughts, JSON-RPC calls (`tap_element`, `screenshot`), verifier verdicts.
+4. **Web UI report (bottom)** — the test management page: step replay, agent reasoning per step, screenshots, pass/fail verdict.
+
+The whole sequence is unedited — what you see is the agent operating the device end-to-end based on a single plain-language test case.
+
+> **Note**: if the video doesn't render in your viewer, [download it directly](https://github.com/rejigtian/smart_bot/raw/main/assets/demo.mp4) (1.4 MB) or watch it on the [latest release page](https://github.com/rejigtian/smart_bot/releases).
+
+---
+
 ## Table of Contents
 
 - [Why Smart-Bot](#why-smart-bot)

@@ -6,6 +6,23 @@
 
 ---
 
+## 演示视频
+
+<video src="https://github.com/rejigtian/smart_bot/raw/main/assets/demo.mp4" controls width="100%"></video>
+
+视频里同时录制了四个画面，演示同一条测试用例的执行：
+
+1. **手机相机（左上）** — 物理证据：手机放在支架上，画面里没有手，开了系统"显示点按操作"，AI 每次点击都会在屏幕上出现一个白圈
+2. **手机投屏（中上）** — Agent 看到的真实手机界面
+3. **后端日志（右上）** — `uvicorn` 实时输出：Agent 思考过程、JSON-RPC 调用（`tap_element`、`screenshot`）、Verifier 判定
+4. **Web UI 测试报告（下方）** — 测试管理页面：步骤回放、每步思考、截图、Pass/Fail 判定
+
+全程未经剪辑，展示的就是 Agent 根据一条自然语言测试用例，端到端操作设备的完整过程。
+
+> **如果视频没显示**：[直接下载](https://github.com/rejigtian/smart_bot/raw/main/assets/demo.mp4)（1.4 MB），或在 [最新 Release 页](https://github.com/rejigtian/smart_bot/releases) 查看。
+
+---
+
 ## 目录
 
 - [项目简介](#项目简介)
