@@ -77,16 +77,16 @@ Smart-AI-Bot 是一个面向 Android 应用 QA 团队（或希望自动化操作
 
 <table>
 <tr>
-<td width="50%"><img src="https://raw.githubusercontent.com/rejigtian/Smart-AI-Bot/main/assets/portal-app.png" alt="Portal App" /></td>
-<td width="50%"><img src="https://raw.githubusercontent.com/rejigtian/Smart-AI-Bot/main/assets/quick-task.png" alt="快速任务" /></td>
+<td width="50%"><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/portal-app.png" alt="Portal App" /></td>
+<td width="50%"><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/quick-task.png" alt="快速任务" /></td>
 </tr>
 <tr>
 <td><b>Portal App</b> — 设置 WebSocket URL + Token，启用无障碍服务，点 Connect 即可让设备上线</td>
 <td><b>快速任务</b> — 用自然语言描述要做的事，选设备 + 模型，点 Run</td>
 </tr>
 <tr>
-<td><img src="https://raw.githubusercontent.com/rejigtian/Smart-AI-Bot/main/assets/test-report.png" alt="测试报告" /></td>
-<td><img src="https://raw.githubusercontent.com/rejigtian/Smart-AI-Bot/main/assets/step-replay.png" alt="步骤回放" /></td>
+<td><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/test-report.png" alt="测试报告" /></td>
+<td><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/step-replay.png" alt="步骤回放" /></td>
 </tr>
 <tr>
 <td><b>测试报告</b> — Pass / Fail 统计、Pass Rate、Token 消耗、耗时，每个 case 都附 Verifier 判定理由</td>
