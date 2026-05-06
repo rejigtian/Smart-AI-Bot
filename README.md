@@ -10,12 +10,11 @@
 
 <video src="https://github.com/user-attachments/assets/9812bbb6-7759-47f5-b09a-fab09053552b" controls width="100%"></video>
 
-The demo above shows four panels recorded simultaneously for the same test case:
+The demo above shows three panels recorded simultaneously for the same test case:
 
-1. **Phone camera (top-left)** — physical proof: the device sits on a stand, no hands in the frame, system "Show Touches" is enabled so every synthetic tap appears as a white dot on the screen.
-2. **Phone screen mirror (top-middle)** — the actual UI as seen by the AI agent.
-3. **Backend log (top-right)** — live `uvicorn` output: agent thoughts, JSON-RPC calls (`tap_element`, `screenshot`), verifier verdicts.
-4. **Web UI report (bottom)** — the test management page: step replay, agent reasoning per step, screenshots, pass/fail verdict.
+- **Left — Phone camera**: physical proof. The device sits on a stand with no hands in frame; "Show Touches" is enabled so every synthetic tap appears as a white dot on the screen.
+- **Middle — Backend log + Web UI report**: live `uvicorn` output (agent thoughts, JSON-RPC calls like `tap_element` / `screenshot`, verifier verdicts) on top, with the test management page (step replay + per-step reasoning + pass/fail verdict) below.
+- **Right — Phone screen mirror**: the actual UI as seen by the AI agent.
 
 The whole sequence is unedited — what you see is the agent operating the device end-to-end based on a single plain-language test case.
 
