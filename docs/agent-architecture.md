@@ -1,4 +1,4 @@
-# Smart-Androidbot Agent 架构文档
+# Smart-AI-Bot Agent 架构文档
 
 > 这个程序整体就是一个 Agent。不是某段提示词，而是六个层级协同工作的完整系统。
 

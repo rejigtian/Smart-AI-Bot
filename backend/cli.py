@@ -1,5 +1,5 @@
 """
-CLI runner for Smart-Androidbot — trigger test runs from the command line.
+CLI runner for Smart-AI-Bot — trigger test runs from the command line.
 
 Usage:
     python cli.py run --suite <id> --device <id> [--provider openai --model gpt-4o --max-steps 20]
@@ -256,7 +256,7 @@ async def run_command(args: argparse.Namespace) -> int:
 def main():
     parser = argparse.ArgumentParser(
         prog="smart-androidbot",
-        description="CLI for Smart-Androidbot test runner",
+        description="CLI for Smart-AI-Bot test runner",
     )
     sub = parser.add_subparsers(dest="command")
 

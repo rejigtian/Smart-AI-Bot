@@ -1,4 +1,4 @@
-# Smart-Bot
+# Smart-AI-Bot
 
 > AI-powered Android UI test automation platform — write test cases in plain English (or import from xmind / Markdown), have an AI agent run them on real devices, and get visual replay reports. Doubles as a general phone-automation tool with self-learning replay.
 
@@ -25,7 +25,7 @@ The whole sequence is unedited — what you see is the agent operating the devic
 
 ## Table of Contents
 
-- [Why Smart-Bot](#why-smart-bot)
+- [Why Smart-AI-Bot](#why-smart-ai-bot)
 - [Features](#features)
 - [Quick Start](#quick-start)
 - [Architecture](#architecture)
@@ -35,7 +35,7 @@ The whole sequence is unedited — what you see is the agent operating the devic
 
 ---
 
-## Why Smart-Bot
+## Why Smart-AI-Bot
 
 You write:
 
@@ -104,7 +104,17 @@ Or one command:
 
 Open http://localhost:5173 and drop your LLM API keys into Settings.
 
-### Build & install the Portal App
+### Install the Portal App
+
+**Option A — prebuilt APK (fastest)**
+
+Download from the [latest release](https://github.com/rejigtian/smart_bot/releases/latest) and install:
+
+```bash
+adb install -r ~/Downloads/app-v1.0.0.apk
+```
+
+**Option B — build from source**
 
 ```bash
 cd android

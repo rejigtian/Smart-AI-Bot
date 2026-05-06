@@ -1,6 +1,6 @@
 # Comparison with Similar Tools
 
-> Honest assessment of how Smart-Bot compares to DroidRun, Midscene.js, and AutoGLM.
+> Honest assessment of how Smart-AI-Bot compares to DroidRun, Midscene.js, and AutoGLM.
 
 **English** · [简体中文](comparison.zh-CN.md)
 
@@ -21,7 +21,7 @@ Built on the GLM model family. Reads UI tree via Android AccessibilityService, s
 
 ## Detailed comparison matrix
 
-| Dimension | Smart-Bot | DroidRun | Midscene.js | AutoGLM |
+| Dimension | Smart-AI-Bot | DroidRun | Midscene.js | AutoGLM |
 |-----------|:---------:|:--------:|:-----------:|:-------:|
 | **Primary positioning** | Android testing platform | Automation workflows | Cross-platform UI automation | Phone/Web autonomous agent |
 | **UI perception** | Screenshot + a11y tree | Screenshot (VLM) | Pure screenshot (Set of Marks) | Screenshot + AccessibilityService |
@@ -57,7 +57,7 @@ AutoGLM:       screenshot + AccessibilityService tree
                − AccessibilityService is awkward for automated testing
                  (manual enable required)
 
-Smart-Bot:     screenshot ×0.5 + grid labels + magenta-crosshair SoM
+Smart-AI-Bot:     screenshot ×0.5 + grid labels + magenta-crosshair SoM
                → a11y tree text + Activity name → LLM decision
                + dual-channel info complements each other; multiplicative
                  coordinate system (not normalized) is more intuitive;
@@ -70,13 +70,13 @@ Smart-Bot:     screenshot ×0.5 + grid labels + magenta-crosshair SoM
 
 ### Control layer: WebSocket vs. ADB
 
-DroidRun and Midscene both rely on ADB, requiring devices to share a network with the PC (or USB direct). Smart-Bot's Portal App actively opens a WebSocket connection; the device can be anywhere (4G/5G, corporate WiFi), and the server can be deployed in the cloud to manage devices globally — a real advantage for distributed QA setups (device farms, remote testing).
+DroidRun and Midscene both rely on ADB, requiring devices to share a network with the PC (or USB direct). Smart-AI-Bot's Portal App actively opens a WebSocket connection; the device can be anywhere (4G/5G, corporate WiFi), and the server can be deployed in the cloud to manage devices globally — a real advantage for distributed QA setups (device farms, remote testing).
 
 ### Test management layer: where the gap is real
 
 The biggest common gap: **none of the three competitors ship a test case management UI + results dashboard**. DroidRun and Midscene focus on the execution framework — test organization is left to user-supplied Python/YAML + CI. AutoGLM is a conversational agent, not a testing framework.
 
-Smart-Bot has full coverage at this layer: suite creation / case CRUD / run history / single-run detail / step replay / starred reference cases / HTML report export. This is currently the most direct differentiation.
+Smart-AI-Bot has full coverage at this layer: suite creation / case CRUD / run history / single-run detail / step replay / starred reference cases / HTML report export. This is currently the most direct differentiation.
 
 ---
 

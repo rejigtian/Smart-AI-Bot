@@ -27,7 +27,7 @@ assignees: ''
 - Node version:         <!-- `node --version` -->
 - Android version:      <!-- e.g. Android 14, Pixel 7 -->
 - LLM provider/model:   <!-- e.g. OpenAI gpt-4o-mini -->
-- Smart-Bot commit/version: <!-- `git rev-parse --short HEAD` -->
+- Smart-AI-Bot commit/version: <!-- `git rev-parse --short HEAD` -->
 
 ## Logs
 

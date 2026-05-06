@@ -1,4 +1,4 @@
-# Contributing to Smart-Bot
+# Contributing to Smart-AI-Bot
 
 Thanks for your interest! This guide covers how to set up a dev environment, the conventions we follow, and the kinds of contributions we're most eager for.
 

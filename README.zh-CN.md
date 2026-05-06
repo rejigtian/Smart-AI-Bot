@@ -1,4 +1,4 @@
-# Smart-Bot
+# Smart-AI-Bot
 
 > AI 驱动的 Android 自动化测试平台 — 用自然语言编写测试用例，或者导入 xmind / md 等文件生成用例。Agent 在真实设备上执行，结果可视化追踪。也可以当作自动化操作手机的工具来用，具备自学习与增强回放功能。
 
@@ -37,7 +37,7 @@
 
 ## 项目简介
 
-Smart-Androidbot 是一个面向 Android 应用 QA 团队（或希望自动化操作 Android 的开发者）的 AI 平台。
+Smart-AI-Bot 是一个面向 Android 应用 QA 团队（或希望自动化操作 Android 的开发者）的 AI 平台。
 
 工作流程：
 
@@ -106,7 +106,17 @@ npm run dev
 
 访问 http://localhost:5173，在设置页填入 LLM API Key。
 
-### 构建并安装 Portal App
+### 安装 Portal App
+
+**方式 A — 直接下载预编译 APK（最快）**
+
+从 [最新 release](https://github.com/rejigtian/smart_bot/releases/latest) 下载后：
+
+```bash
+adb install -r ~/Downloads/app-v1.0.0.apk
+```
+
+**方式 B — 从源码构建**
 
 ```bash
 cd android
