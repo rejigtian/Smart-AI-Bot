@@ -18,6 +18,8 @@ The demo above shows three panels recorded simultaneously for the same test case
 
 The whole sequence is unedited — what you see is the agent operating the device end-to-end based on a single plain-language test case.
 
+> **No USB cable in this demo.** The phone talks to the server over WiFi only, via the Portal App's reverse WebSocket — the laptop and the phone don't even need to be on the same network. Run your devices anywhere (4G / 5G / corporate WiFi).
+
 > **Note**: if the video doesn't render in your viewer, [download it directly](https://github.com/rejigtian/Smart-AI-Bot/releases/download/v1.0.0/example.mp4) (15 MB) or browse the [Releases page](https://github.com/rejigtian/Smart-AI-Bot/releases).
 
 ---

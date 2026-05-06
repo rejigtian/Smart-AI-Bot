@@ -18,6 +18,8 @@
 
 全程未经剪辑，展示的就是 Agent 根据一条自然语言测试用例，端到端操作设备的完整过程。
 
+> **演示中没有 USB 连接。** 手机和电脑只通过 WiFi 通信（Portal App 反向 WebSocket），甚至不要求同一个网段。设备能跑在任意网络上 — 4G / 5G / 公司 WiFi 都行。
+
 > **如果视频没显示**：[直接下载](https://github.com/rejigtian/Smart-AI-Bot/releases/download/v1.0.0/example.mp4)（15 MB），或访问 [Releases 页](https://github.com/rejigtian/Smart-AI-Bot/releases)。
 
 ---
