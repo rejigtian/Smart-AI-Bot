@@ -39,3 +39,6 @@ test_knowledge/config.yml
 test_knowledge/INDEX.md
 test_knowledge/features/
 test_knowledge/common/
+
+# Personal scratch notes (promotion plan, todo lists, draft posts) — never commit.
+notes/
