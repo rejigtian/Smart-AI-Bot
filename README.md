@@ -73,12 +73,24 @@ Full comparison and roadmap: [Comparison](docs/comparison.md) · [Roadmap](docs/
 
 ## Screenshots
 
-| | |
-|---|---|
-| ![Portal App on Android](assets/portal-app.png) | ![Quick Task in Web UI](assets/quick-task.png) |
-| **Portal App** — pair the device by setting WebSocket URL + Token, enable Accessibility, and tap Connect | **Quick Task** — describe a task in plain language, pick a device + LLM model, hit Run |
-| ![Test Report](assets/test-report.png) | ![Step Replay](assets/step-replay.png) |
-| **Test Report** — pass/fail counts, pass rate, token usage, run time, and per-case verdict with verifier reasoning | **Step Replay** — every action with screenshot, agent reasoning, and tool call (e.g. `tap_element({"index": 5})`) |
+<table>
+<tr>
+<td width="50%"><img src="https://raw.githubusercontent.com/rejigtian/Smart-AI-Bot/main/assets/portal-app.png" alt="Portal App on Android" /></td>
+<td width="50%"><img src="https://raw.githubusercontent.com/rejigtian/Smart-AI-Bot/main/assets/quick-task.png" alt="Quick Task in Web UI" /></td>
+</tr>
+<tr>
+<td><b>Portal App</b> — pair the device by setting WebSocket URL + Token, enable Accessibility, and tap Connect</td>
+<td><b>Quick Task</b> — describe a task in plain language, pick a device + LLM model, hit Run</td>
+</tr>
+<tr>
+<td><img src="https://raw.githubusercontent.com/rejigtian/Smart-AI-Bot/main/assets/test-report.png" alt="Test Report" /></td>
+<td><img src="https://raw.githubusercontent.com/rejigtian/Smart-AI-Bot/main/assets/step-replay.png" alt="Step Replay" /></td>
+</tr>
+<tr>
+<td><b>Test Report</b> — pass/fail counts, pass rate, token usage, run time, and per-case verdict with verifier reasoning</td>
+<td><b>Step Replay</b> — every action with screenshot, agent reasoning, and tool call (e.g. <code>tap_element({"index": 5})</code>)</td>
+</tr>
+</table>
 
 ---
 
