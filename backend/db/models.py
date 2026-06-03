@@ -43,6 +43,10 @@ class TestCase(Base):
     expected: Mapped[str] = mapped_column(Text, default="")   # leaf node / last segment
     order: Mapped[int] = mapped_column(Integer, default=0)
     parameters: Mapped[str] = mapped_column(Text, default="")  # JSON: [{"key":"val"}, ...] for parameterized runs
+    # JSON list of {action, expected} — when non-empty the runner verifies
+    # each step in order and fails the case on the first miss.  Empty for
+    # legacy single-expected cases.
+    checkpoints: Mapped[str] = mapped_column(Text, default="")
 
     suite: Mapped["TestSuite"] = relationship(back_populates="cases")
 

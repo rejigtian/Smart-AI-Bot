@@ -51,4 +51,5 @@ async def init_db():
 
         await _ensure_columns("test_cases", {
             "parameters": "TEXT DEFAULT ''",
+            "checkpoints": "TEXT DEFAULT ''",
         })

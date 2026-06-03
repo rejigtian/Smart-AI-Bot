@@ -11,7 +11,7 @@ import struct
 from typing import Any, Dict, List, Optional, Tuple
 
 from agent.perception import format_ui_state
-from ws.portal_ws import DeviceConnection, send_rpc
+from ws.portal_ws import connected_devices, send_rpc
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +22,8 @@ _KEY_CODES = {
 
 
 class WebSocketDevice:
-    def __init__(self, connection: DeviceConnection):
-        self.connection = connection
+    def __init__(self, device_id: str):
+        self.device_id = device_id
         # Cache from last get_ui_state() call — used by tap_element() and guards
         self._elements: List[Dict[str, Any]] = []
         self.screen_width: int = 0
@@ -36,9 +36,14 @@ class WebSocketDevice:
 
     async def _rpc(self, method: str, params: Optional[Dict[str, Any]] = None,
                    timeout: float = 30.0) -> Any:
-        if not self.connection.is_connected:
-            raise RuntimeError(f"Device {self.connection.device_id} is not connected")
-        return await send_rpc(self.connection, method, params, timeout=timeout)
+        # Look up the live connection on every call. If Portal briefly drops and
+        # reconnects mid-run, connected_devices[device_id] is replaced with a fresh
+        # DeviceConnection — we must use that, not a stale reference captured at
+        # WebSocketDevice construction time.
+        conn = connected_devices.get(self.device_id)
+        if conn is None or not conn.is_connected:
+            raise RuntimeError(f"Device {self.device_id} is not connected")
+        return await send_rpc(conn, method, params, timeout=timeout)
 
     def _img_to_abs(self, img_x: int, img_y: int) -> tuple[int, int]:
         """Convert half-size screenshot pixel coordinates to device pixel coordinates.

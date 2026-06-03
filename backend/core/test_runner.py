@@ -19,7 +19,7 @@ from sqlalchemy import select, update
 
 from agent.ws_device import WebSocketDevice
 from core.test_agent import CaseResult, TestCaseAgent
-from core.test_parser import TestCaseData
+from core.test_parser import Step, TestCaseData
 from db.database import AsyncSessionLocal
 from db.models import TestCase, TestResult, TestRun, TestStepLog
 from ws.portal_ws import connected_devices
@@ -155,7 +155,7 @@ async def execute_run(
             await emit(f"ERROR: Device {device_id} is not connected")
             return
 
-        device = WebSocketDevice(conn)
+        device = WebSocketDevice(device_id)
         api_key = _load_api_key(provider)
         api_base = _load_api_base(provider)
         v_provider, v_model, v_key, v_base = _load_verifier_settings()
@@ -171,40 +171,83 @@ async def execute_run(
 
         passed = failed = errored = skipped = 0
 
-        def _expand_params(path: str, expected: str, params_json: str) -> list[TestCaseData]:
-            """Expand a parameterized case into multiple TestCaseData instances."""
+        def _parse_checkpoints(raw: str) -> list[Step]:
+            """Decode the JSON checkpoints column into a list of Step.
+
+            Tolerant: malformed entries are skipped so a typo in one case
+            doesn't break the whole run.
+            """
+            if not raw:
+                return []
+            try:
+                items = json.loads(raw)
+            except Exception:
+                return []
+            if not isinstance(items, list):
+                return []
+            out: list[Step] = []
+            for it in items:
+                if not isinstance(it, dict):
+                    continue
+                action = str(it.get("action", "")).strip()
+                expected_ = str(it.get("expected", "")).strip()
+                if action and expected_:
+                    out.append(Step(action=action, expected=expected_))
+            return out
+
+        def _expand_params(
+            path: str, expected: str, params_json: str, steps: list[Step],
+        ) -> list[TestCaseData]:
+            """Expand a parameterized case into multiple TestCaseData instances.
+
+            Substitution applies to path, expected, and every step's
+            action/expected text so checkpoints can use the same {{var}}
+            placeholders as the legacy fields.
+            """
+            base = TestCaseData(path=path, expected=expected, steps=list(steps))
             if not params_json:
-                return [TestCaseData(path=path, expected=expected)]
+                return [base]
             try:
                 param_sets = json.loads(params_json)
                 if not isinstance(param_sets, list) or len(param_sets) == 0:
-                    return [TestCaseData(path=path, expected=expected)]
+                    return [base]
             except Exception:
-                return [TestCaseData(path=path, expected=expected)]
-            expanded = []
-            import re
+                return [base]
+            expanded: list[TestCaseData] = []
             for ps in param_sets:
                 if not isinstance(ps, dict):
                     continue
                 p = path
                 e = expected
+                substituted_steps: list[Step] = []
+                for s in steps:
+                    sa, se = s.action, s.expected
+                    for k, v in ps.items():
+                        sa = sa.replace(f"{{{{{k}}}}}", str(v))
+                        se = se.replace(f"{{{{{k}}}}}", str(v))
+                    substituted_steps.append(Step(action=sa, expected=se))
                 for k, v in ps.items():
                     p = p.replace(f"{{{{{k}}}}}", str(v))
                     e = e.replace(f"{{{{{k}}}}}", str(v))
-                expanded.append(TestCaseData(path=p, expected=e))
-            return expanded or [TestCaseData(path=path, expected=expected)]
+                expanded.append(TestCaseData(path=p, expected=e, steps=substituted_steps))
+            return expanded or [base]
 
         # Expand parameterized cases into flat list
         expanded_cases = []
         for case_row in cases:
-            variants = _expand_params(case_row.path, case_row.expected, case_row.parameters or "")
+            row_steps = _parse_checkpoints(getattr(case_row, "checkpoints", "") or "")
+            variants = _expand_params(
+                case_row.path, case_row.expected,
+                case_row.parameters or "", row_steps,
+            )
             for v in variants:
                 expanded_cases.append((case_row, v))
 
         for idx, (case_row, case_data) in enumerate(expanded_cases):
             result_row = result_rows.get(case_row.id)
 
-            await emit(f"\n[{idx+1}/{len(expanded_cases)}] {case_data.path} | {case_data.expected}")
+            cp_tag = f" | {len(case_data.steps)} checkpoints" if case_data.steps else ""
+            await emit(f"\n[{idx+1}/{len(expanded_cases)}] {case_data.path} | {case_data.expected}{cp_tag}")
 
             if result_row:
                 async with AsyncSessionLocal() as session:

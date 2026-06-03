@@ -1,4 +1,6 @@
 """Test suite management — upload XMind/MD files, list suites and cases."""
+import json
+from dataclasses import asdict
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -32,12 +34,15 @@ class CaseOut(BaseModel):
     path: str
     expected: str
     parameters: str = ""
+    # JSON list of {action, expected}; empty when the case is legacy single-expected.
+    checkpoints: str = ""
 
 
 class CaseIn(BaseModel):
     path: str
     expected: str = ""
     parameters: str = ""  # JSON array: [{"key": "val"}, ...]
+    checkpoints: str = ""  # JSON array: [{"action": "...", "expected": "..."}, ...]
 
 
 @router.get("", response_model=List[SuiteOut])
@@ -84,11 +89,17 @@ async def upload_suite(
     await db.flush()  # get suite.id
 
     for i, c in enumerate(cases):
+        checkpoints_json = ""
+        if c.steps:
+            checkpoints_json = json.dumps(
+                [asdict(s) for s in c.steps], ensure_ascii=False
+            )
         db.add(TestCase(
             suite_id=suite.id,
             path=c.path,
             expected=c.expected,
             order=i,
+            checkpoints=checkpoints_json,
         ))
 
     await db.commit()
@@ -132,7 +143,13 @@ async def list_cases(suite_id: str, db: AsyncSession = Depends(get_db)):
         .order_by(TestCase.order)
     )
     cases = result.scalars().all()
-    return [CaseOut(id=c.id, order=c.order, path=c.path, expected=c.expected, parameters=c.parameters or "") for c in cases]
+    return [
+        CaseOut(
+            id=c.id, order=c.order, path=c.path, expected=c.expected,
+            parameters=c.parameters or "", checkpoints=c.checkpoints or "",
+        )
+        for c in cases
+    ]
 
 
 @router.delete("/{suite_id}", status_code=204)
@@ -155,11 +172,18 @@ async def add_case(suite_id: str, body: CaseIn, db: AsyncSession = Depends(get_d
         select(func.max(TestCase.order)).where(TestCase.suite_id == suite_id)
     )
     max_order = res.scalar() or 0
-    case = TestCase(suite_id=suite_id, path=body.path, expected=body.expected, order=max_order + 1, parameters=body.parameters)
+    case = TestCase(
+        suite_id=suite_id, path=body.path, expected=body.expected,
+        order=max_order + 1, parameters=body.parameters,
+        checkpoints=body.checkpoints or "",
+    )
     db.add(case)
     await db.commit()
     await db.refresh(case)
-    return CaseOut(id=case.id, order=case.order, path=case.path, expected=case.expected)
+    return CaseOut(
+        id=case.id, order=case.order, path=case.path, expected=case.expected,
+        parameters=case.parameters or "", checkpoints=case.checkpoints or "",
+    )
 
 
 @router.put("/{suite_id}/cases/{case_id}", response_model=CaseOut)
@@ -172,8 +196,12 @@ async def update_case(
     case.path = body.path
     case.expected = body.expected
     case.parameters = body.parameters
+    case.checkpoints = body.checkpoints or ""
     await db.commit()
-    return CaseOut(id=case.id, order=case.order, path=case.path, expected=case.expected)
+    return CaseOut(
+        id=case.id, order=case.order, path=case.path, expected=case.expected,
+        parameters=case.parameters or "", checkpoints=case.checkpoints or "",
+    )
 
 
 @router.delete("/{suite_id}/cases/{case_id}", status_code=204)

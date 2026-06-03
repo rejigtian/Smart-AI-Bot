@@ -91,7 +91,7 @@ def _get_device(device_id: str) -> WebSocketDevice:
     conn = connected_devices.get(device_id)
     if conn is None or not conn.is_connected:
         raise HTTPException(status_code=400, detail=f"Device '{device_id}' is not connected")
-    return WebSocketDevice(conn)
+    return WebSocketDevice(device_id)
 
 
 def _step_description(action: str, args: dict, elements: list) -> str:

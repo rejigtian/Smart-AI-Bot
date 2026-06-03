@@ -1,0 +1,31 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    image: smart-ai-bot-backend
+    container_name: smart-ai-bot-backend
+    restart: unless-stopped
+    environment:
+      # Use litellm's bundled cost map instead of fetching it from GitHub on
+      # startup (the remote fetch fails behind restrictive networks).
+      LITELLM_LOCAL_MODEL_COST_MAP: "True"
+    volumes:
+      - backend-data:/app/data
+    expose:
+      - "8000"
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+    image: smart-ai-bot-frontend
+    container_name: smart-ai-bot-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+
+volumes:
+  backend-data:

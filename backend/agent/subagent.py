@@ -43,11 +43,19 @@ async def run_with_subagents(
     agent,  # TestCaseAgent instance (avoid circular import)
     case,   # TestCaseData
     subgoals: list[SubGoal],
+    strict: bool = False,
 ) -> "CaseResult":
     """Execute a task by dispatching sub-goals to isolated sub-agents.
 
     Each sub-goal gets a fresh TestCaseAgent with its own memory.
     The parent aggregates results into a single CaseResult.
+
+    strict=False (default, planner-decomposed): abort after 2 consecutive
+        failed sub-goals — gives the LLM-generated plan some slack.
+    strict=True (user-defined checkpoints): abort on the FIRST failed
+        sub-goal.  Used when subgoals come from the test author's explicit
+        (action → expected) pairs, where one missed checkpoint means the
+        contract is broken.
     """
     from core.test_agent import CaseResult, StepLog, TestCaseAgent
     from core.test_parser import TestCaseData
@@ -159,6 +167,12 @@ async def run_with_subagents(
         # Failure handling
         if sr.status in ("fail", "error"):
             consecutive_failures += 1
+            if strict:
+                await agent._log(
+                    f"  🛑 Checkpoint {sg.index} failed in strict mode — aborting"
+                )
+                log_lines.append(f"[ABORT] Checkpoint {sg.index} failed (strict)")
+                break
             if consecutive_failures >= 2:
                 await agent._log("  🛑 2 consecutive subgoal failures — aborting")
                 log_lines.append("[ABORT] 2 consecutive subgoal failures")
@@ -170,17 +184,27 @@ async def run_with_subagents(
     all_passed = all(sr.status == "pass" for sr in sub_results)
     any_error = any(sr.status == "error" for sr in sub_results)
 
-    if all_passed:
+    unit = "Checkpoint" if strict else "SubGoal"
+    total = len(subgoals)  # report against intended count, not what we ran
+    if all_passed and len(sub_results) == total:
         final_status = "pass"
-        final_reason = f"All {len(sub_results)} sub-goals passed"
+        final_reason = f"All {total} {unit.lower()}s passed"
     elif any_error:
         final_status = "error"
         failed_sgs = [sr for sr in sub_results if sr.status != "pass"]
-        final_reason = f"SubGoal {failed_sgs[0].subgoal_index} errored: {failed_sgs[0].summary[:200]}"
+        first = failed_sgs[0]
+        final_reason = (
+            f"{unit} {first.subgoal_index}/{total} errored "
+            f"({first.subgoal_desc[:80]}): {first.summary[:200]}"
+        )
     else:
         final_status = "fail"
         failed_sgs = [sr for sr in sub_results if sr.status != "pass"]
-        final_reason = f"SubGoal {failed_sgs[0].subgoal_index} failed: {failed_sgs[0].summary[:200]}"
+        first = failed_sgs[0]
+        final_reason = (
+            f"{unit} {first.subgoal_index}/{total} failed "
+            f"({first.subgoal_desc[:80]}): {first.summary[:200]}"
+        )
 
     return CaseResult(
         status=final_status,

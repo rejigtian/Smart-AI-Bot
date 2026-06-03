@@ -96,13 +96,27 @@ Full comparison and roadmap: [Comparison](docs/comparison.md) · [Roadmap](docs/
 
 ## Quick Start
 
-### Prerequisites
+### Option 1 — Docker (recommended for deployment)
 
-- Python 3.9+
-- Node.js 18+
-- An Android device (real device or emulator)
+Requires Docker 20+ with Compose v2. No Python / Node install needed on the host.
 
-### Run the backend & frontend
+```bash
+git clone https://github.com/rejigtian/Smart-AI-Bot.git
+cd Smart-AI-Bot
+docker compose up -d
+```
+
+Open http://localhost:5173 and drop your LLM API keys into Settings.
+
+The SQLite database is persisted in a Docker volume (`backend-data`). To override ports:
+
+```bash
+BACKEND_PORT=18000 FRONTEND_PORT=15173 docker compose up -d
+```
+
+### Option 2 — Run from source
+
+Prerequisites: Python 3.9+, Node.js 18+, an Android device (real or emulator).
 
 ```bash
 git clone https://github.com/rejigtian/Smart-AI-Bot.git
@@ -200,6 +214,7 @@ Detailed design: [`docs/agent-architecture.md`](docs/agent-architecture.md).
 
 | Doc | What it covers |
 |-----|----------------|
+| [Deployment](docs/deployment.md) | Docker, public-server (HTTPS/WSS) setup, backups |
 | [Agent Architecture](docs/agent-architecture.md) | 6-layer agent + Planner / Subagent design |
 | [Android Portal](docs/android-optimization.md) | Portal App performance & connection stability |
 | [Test KB](test_knowledge/PLAN.md) | Building the test knowledge base for your own app |

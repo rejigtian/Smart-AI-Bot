@@ -430,6 +430,29 @@ class TestCaseAgent:
         if kb_message:
             await self._log(f"  📚 Test KB loaded ({len(kb_message)} chars)")
 
+        # ── User-defined checkpoints (strict) ────────────────────────
+        # When the test author provided explicit (action → expected) pairs
+        # in the source file, treat each pair as a SubGoal and run them
+        # with strict failure semantics (first miss = case fails).  We
+        # skip the LLM planner here on purpose: the author already chose
+        # the granularity.
+        if getattr(case, "steps", None):
+            from agent.planner import SubGoal
+            from agent.subagent import run_with_subagents
+            await self._log(
+                f"  ✅ {len(case.steps)} user-defined checkpoints — strict mode"
+            )
+            cp_subgoals = [
+                SubGoal(
+                    index=i + 1,
+                    description=s.action,
+                    success_criteria=s.expected,
+                    expected_steps=5,
+                )
+                for i, s in enumerate(case.steps)
+            ]
+            return await run_with_subagents(self, case, cp_subgoals, strict=True)
+
         # ── Subagent routing (Phase 2) ───────────────────────────────
         # Complex tasks are decomposed into SubGoals, each executed by an
         # isolated sub-agent with its own AgentMemory (Hermes-style).

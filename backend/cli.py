@@ -114,7 +114,7 @@ async def run_command(args: argparse.Namespace) -> int:
         print(f"ERROR: Device '{device_id}' is not connected", file=sys.stderr)
         return 2
 
-    device = WebSocketDevice(conn)
+    device = WebSocketDevice(device_id)
     api_key = _load_api_key(provider)
     api_base = _load_api_base(provider)
     v_provider, v_model, v_key, v_base = _load_verifier_settings()

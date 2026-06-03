@@ -98,13 +98,27 @@ Smart-AI-Bot 是一个面向 Android 应用 QA 团队（或希望自动化操作
 
 ## 快速开始
 
-### 前置条件
+### 方式一 — Docker（推荐用于部署）
 
-- Python 3.9+
-- Node.js 18+
-- Android 设备（真机或模拟器）
+需要 Docker 20+ 和 Compose v2，宿主机不用装 Python / Node。
 
-### 启动后端 + 前端
+```bash
+git clone https://github.com/rejigtian/Smart-AI-Bot.git
+cd Smart-AI-Bot
+docker compose up -d
+```
+
+打开 http://localhost:5173，在设置页填入 LLM API Key。
+
+SQLite 数据持久化在 Docker volume（`backend-data`）。需要改端口：
+
+```bash
+BACKEND_PORT=18000 FRONTEND_PORT=15173 docker compose up -d
+```
+
+### 方式二 — 源码启动
+
+前置条件：Python 3.9+、Node.js 18+、Android 设备（真机或模拟器）。
 
 ```bash
 git clone https://github.com/rejigtian/Smart-AI-Bot.git
@@ -201,6 +215,7 @@ Android 设备 (Portal App)
 
 | 文档 | 说明 |
 |------|------|
+| [部署指南](docs/deployment.zh-CN.md) | Docker、公网服务器（HTTPS/WSS）部署、备份 |
 | [Agent 架构](docs/agent-architecture.md) | 6 层 Agent + Planner / Subagent 详细设计 |
 | [Android Portal](docs/android-optimization.md) | Portal App 性能与连接稳定性 |
 | [Test KB 使用](test_knowledge/PLAN.md) | 测试知识库构建、AUTO/HUMAN 区段、检索机制 |
