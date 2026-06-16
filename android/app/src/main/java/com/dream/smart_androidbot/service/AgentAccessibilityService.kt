@@ -2,8 +2,11 @@ package com.dream.smart_androidbot.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import com.dream.smart_androidbot.keepalive.KeepAliveController
+import com.dream.smart_androidbot.keepalive.KeepAliveRecoveryActivity
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Handler
@@ -50,6 +53,31 @@ class AgentAccessibilityService : AccessibilityService() {
                 AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE
         info.notificationTimeout = 0
         serviceInfo = info
+        // Re-establish keep-alive whenever a11y reconnects (e.g. after a kill).
+        KeepAliveController.reconcileBestEffort(this)
+    }
+
+    /**
+     * Launch the transparent keep-alive recovery Activity. Called by
+     * KeepAliveService when the device is locked/screen-off; bringing an Activity
+     * to the foreground resets the OEM idle-kill timer and wakes the screen.
+     */
+    fun launchKeepAliveRecoveryActivity(reason: String, recoveryToken: Long): Boolean {
+        return try {
+            val intent = Intent(this, KeepAliveRecoveryActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra(KeepAliveRecoveryActivity.EXTRA_REASON, reason)
+                putExtra(KeepAliveRecoveryActivity.EXTRA_RECOVERY_TOKEN, recoveryToken)
+            }
+            startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch keep-alive recovery activity", e)
+            false
+        }
     }
 
     override fun onInterrupt() {}

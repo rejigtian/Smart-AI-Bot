@@ -156,9 +156,13 @@ async def execute_run(
             return
 
         device = WebSocketDevice(device_id)
+        _apply_aws_env()  # export AWS creds so litellm/boto3 can reach Bedrock
         api_key = _load_api_key(provider)
         api_base = _load_api_base(provider)
         v_provider, v_model, v_key, v_base = _load_verifier_settings()
+        fallbacks = _load_fallback_chain(provider, model)
+        if fallbacks:
+            await emit(f"Fallback models: {', '.join(t.label() for t in fallbacks)}")
 
         # Mark run as running
         async with AsyncSessionLocal() as session:
@@ -346,6 +350,7 @@ async def execute_run(
                 verifier_api_base=v_base,
                 reference_examples=reference_examples or None,
                 lessons_learned=lessons or None,
+                fallbacks=fallbacks,
             )
 
             case_result: Optional[CaseResult] = None
@@ -381,6 +386,7 @@ async def execute_run(
                         verifier_provider=v_provider, verifier_model=v_model,
                         verifier_api_key=v_key, verifier_api_base=v_base,
                         reference_examples=reference_examples or None,
+                        fallbacks=fallbacks,
                     )
                     continue
                 break  # pass or no retries left
@@ -544,6 +550,77 @@ def _load_api_base(provider: str) -> str:
         return base_map.get(provider.lower(), "")
     except Exception:
         return ""
+
+
+def _apply_aws_env() -> None:
+    """Export AWS Bedrock credentials from settings.json into the process env.
+
+    litellm/boto3 read AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / region from the
+    environment. We set them at run start so a 'bedrock' provider just works
+    without threading creds through every completion call.
+    """
+    import os
+    import json
+    from pathlib import Path
+
+    settings_path = Path(__file__).parent.parent / "data" / "settings.json"
+    if not settings_path.exists():
+        return
+    try:
+        data = json.loads(settings_path.read_text())
+    except Exception:
+        return
+    ak = data.get("aws_access_key_id", "") or ""
+    sk = data.get("aws_secret_access_key", "") or ""
+    region = data.get("aws_region_name", "") or "us-east-1"
+    if ak and sk:
+        os.environ["AWS_ACCESS_KEY_ID"] = ak
+        os.environ["AWS_SECRET_ACCESS_KEY"] = sk
+        os.environ["AWS_REGION_NAME"] = region
+        os.environ["AWS_DEFAULT_REGION"] = region
+        os.environ["AWS_REGION"] = region
+
+
+def _load_fallback_chain(primary_provider: str, primary_model: str) -> list:
+    """Build an ordered list of ModelTarget fallbacks from settings.json.
+
+    Any provider that has an API key configured (other than the primary) becomes
+    a fallback, so a flaky/rate-limited primary provider auto-degrades to a
+    working backup instead of failing the whole run. Ollama (local, keyless) is
+    included if a base URL is set.
+    """
+    import json
+    from pathlib import Path
+    from agent.llm import ModelTarget
+
+    settings_path = Path(__file__).parent.parent / "data" / "settings.json"
+    if not settings_path.exists():
+        return []
+    try:
+        data = json.loads(settings_path.read_text())
+    except Exception:
+        return []
+
+    # Provider → (settings key field, default fallback model) in priority order.
+    candidates = [
+        ("openai", "openai_api_key", "gpt-4o"),
+        ("anthropic", "anthropic_api_key", "claude-3-5-sonnet-20241022"),
+        ("gemini", "gemini_api_key", "gemini-1.5-pro"),
+        ("zhipuai", "zhipu_api_key", "glm-4v"),
+        ("groq", "groq_api_key", "llama-3.2-90b-vision-preview"),
+    ]
+    chain: list = []
+    for provider, key_field, default_model in candidates:
+        if provider.lower() == primary_provider.lower():
+            continue
+        key = data.get(key_field, "")
+        if not key:
+            continue
+        chain.append(ModelTarget(
+            provider=provider, model=default_model,
+            api_key=key, api_base=_load_api_base(provider),
+        ))
+    return chain
 
 
 def _load_verifier_settings() -> tuple:

@@ -20,6 +20,10 @@ class Settings(BaseModel):
     zhipu_api_key: Optional[str] = ""
     groq_api_key: Optional[str] = ""
     ollama_base_url: Optional[str] = "http://localhost:11434"
+    # AWS Bedrock (provider = "bedrock"). Uses AWS credentials, not an API key.
+    aws_access_key_id: Optional[str] = ""
+    aws_secret_access_key: Optional[str] = ""
+    aws_region_name: Optional[str] = "us-east-1"
     default_provider: Optional[str] = "openai"
     default_model: Optional[str] = "gpt-4o"
     # Verifier can use a separate (stronger) model for pass/fail judgment.

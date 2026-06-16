@@ -11,15 +11,11 @@ case or app, so the agent avoids repeating the same mistakes.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
 from typing import Optional
 
-import litellm
-
-from agent.base import build_model_kwargs
 from db.database import AsyncSessionLocal
 from db.models import LessonLearned, TestResult, TestStepLog
 from sqlalchemy import func, select
@@ -165,22 +161,21 @@ async def analyze_with_llm(
         )
     trace_text = "\n".join(trace_lines)
 
-    model_str, extra = build_model_kwargs(provider, model, api_base)
-    kwargs = {
-        "model": model_str,
-        "messages": [
-            {"role": "system", "content": _ANALYSIS_PROMPT},
-            {"role": "user", "content": trace_text},
-        ],
-        "temperature": 0.2,
-        "max_tokens": 500,
-        **extra,
-    }
-    if api_key:
-        kwargs["api_key"] = api_key
+    from agent.llm import ModelTarget, resilient_completion
 
     try:
-        response = await asyncio.wait_for(litellm.acompletion(**kwargs), timeout=30.0)
+        response = await resilient_completion(
+            primary=ModelTarget(provider, model, api_key, api_base),
+            base_kwargs={
+                "messages": [
+                    {"role": "system", "content": _ANALYSIS_PROMPT},
+                    {"role": "user", "content": trace_text},
+                ],
+                "temperature": 0.2,
+                "max_tokens": 500,
+            },
+            timeout=30.0,
+        )
         content = (response.choices[0].message.content or "").strip()
 
         json_match = re.search(r"\[.*\]", content, re.DOTALL)

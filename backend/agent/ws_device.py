@@ -175,9 +175,19 @@ class WebSocketDevice:
         return f"Tapped element {index} ('{el['text']}') at ({cx}, {cy})"
 
     async def start_app(self, package: str, activity: str = "") -> str:
-        await self._rpc("app", {"package": package, "activity": activity,
-                                 "stopBeforeLaunch": False})
-        return f"Started {package}"
+        result = await self._rpc("app", {"package": package, "activity": activity,
+                                         "stopBeforeLaunch": False})
+        # The Portal returns "Launched <package>" on success, or an error string
+        # (e.g. "Could not create intent for X") when the package isn't installed.
+        # Don't blindly report success — that traps the agent in a relaunch loop.
+        text = result if isinstance(result, str) else str(result)
+        if text.startswith("Launched"):
+            return f"Started {package}"
+        return (
+            f"ERROR: could not launch '{package}' — {text}. This package is likely "
+            f"not installed. Call list_packages() to find the correct package name "
+            f"(each app is listed as 'App Name | package.name')."
+        )
 
     async def stop_app(self, package: str) -> str:
         await self._rpc("app/stop", {"package": package})
@@ -186,7 +196,14 @@ class WebSocketDevice:
     async def list_packages(self) -> List[str]:
         result = await self._rpc("packages", {})
         apps: list = result if isinstance(result, list) else result.get("packages", [])
-        return [a.get("packageName", "") for a in apps]
+        out: List[str] = []
+        for a in apps:
+            pkg = a.get("packageName", "")
+            if not pkg:
+                continue
+            label = a.get("appName", "") or ""
+            out.append(f"{label} | {pkg}" if label else pkg)
+        return out
 
     async def global_action(self, action: str) -> str:
         """action: back / home / recent / notifications

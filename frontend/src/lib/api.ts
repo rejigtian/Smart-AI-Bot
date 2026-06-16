@@ -87,6 +87,9 @@ export interface Settings {
   zhipu_api_key: string
   groq_api_key: string
   ollama_base_url: string
+  aws_access_key_id: string
+  aws_secret_access_key: string
+  aws_region_name: string
   default_provider: string
   default_model: string
   verifier_provider: string

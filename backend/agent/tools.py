@@ -162,7 +162,12 @@ TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "start_app",
-            "description": "Launch an Android app by package name.",
+            "description": (
+                "Launch an Android app by its exact package name (e.g. 'com.wepie.wespy'). "
+                "Do NOT guess the package name — if you only know the app's display name "
+                "(e.g. '我是卧底'), call list_packages() first to find its package. "
+                "Returns an ERROR if the package is not installed."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -178,10 +183,12 @@ TOOLS: list[dict] = [
         "function": {
             "name": "list_packages",
             "description": (
-                "List all installed app package names on the device. "
-                "Call this when start_app() fails with 'Could not create intent' "
-                "or when you don't know the correct package name for an app. "
-                "Search the result for the app name, then retry start_app() with the correct package."
+                "List installed, launchable apps as 'App Name | package.name' "
+                "(e.g. '我是卧底 | com.wepie.wespy'). "
+                "Call this whenever you need to open an app but only know its display name, "
+                "or when start_app() returns an ERROR. "
+                "Find the line whose App Name matches your target, then call start_app() "
+                "with the package on the right of the '|'."
             ),
             "parameters": {
                 "type": "object",

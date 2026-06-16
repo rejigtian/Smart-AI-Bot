@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { fetchDevices, fetchSettings, quickRun } from '../lib/api'
 
-const PROVIDERS = ['openai', 'anthropic', 'google', 'zhipuai', 'groq', 'ollama']
+const PROVIDERS = ['openai', 'anthropic', 'bedrock', 'google', 'zhipuai', 'groq', 'ollama']
 
 const DEFAULT_MODELS: Record<string, string> = {
   openai: 'gpt-4o',
   anthropic: 'claude-sonnet-4-6',
+  bedrock: 'us.anthropic.claude-sonnet-4-6',
   google: 'gemini-1.5-pro',
   zhipuai: 'glm-4v',
   groq: 'llama-3.1-70b-versatile',

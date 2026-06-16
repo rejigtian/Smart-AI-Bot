@@ -24,9 +24,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-import litellm
-
-from agent.base import DeviceDriver, build_model_kwargs
+from agent.base import DeviceDriver
+from agent.llm import ModelTarget, resilient_completion
 from agent.memory import AgentMemory
 from agent.perception import detect_elements_vlm
 from agent.planner import generate_plan, generate_subgoals
@@ -277,6 +276,7 @@ class TestCaseAgent:
         verifier_api_base: str = "",
         reference_examples: Optional[list] = None,  # starred action records from past runs
         lessons_learned: Optional[list] = None,  # negative experiences from past runs
+        fallbacks: Optional[list] = None,  # list[ModelTarget] for resilient_completion
     ):
         self.device = device
         self.provider = provider
@@ -286,12 +286,14 @@ class TestCaseAgent:
         self.max_steps = max_steps
         self.step_delay = step_delay
         self.log_callback = log_callback
+        self.fallbacks: list = fallbacks or []
+        self._primary = ModelTarget(provider, model, api_key, api_base)
         # Verifier uses its own model if configured, otherwise falls back to the agent model.
         v_provider = verifier_provider or provider
         v_model = verifier_model or model
         v_key = verifier_api_key or api_key
         v_base = verifier_api_base or api_base
-        self._verifier = LLMVerifier(v_provider, v_model, v_key, v_base)
+        self._verifier = LLMVerifier(v_provider, v_model, v_key, v_base, fallbacks=self.fallbacks)
         self._reference_examples: list = reference_examples or []
         self._lessons_learned: list = lessons_learned or []
 
@@ -305,9 +307,7 @@ class TestCaseAgent:
 
         Uses the same LLM provider but with a lightweight prompt.
         """
-        model_str, extra = build_model_kwargs(self.provider, self.model, self.api_base)
-        kwargs: dict[str, Any] = {
-            "model": model_str,
+        base_kwargs: dict[str, Any] = {
             "messages": [
                 {"role": "system", "content": (
                     "Summarize the following Android test agent interaction into a brief "
@@ -319,25 +319,20 @@ class TestCaseAgent:
             ],
             "temperature": 0.2,
             "max_tokens": 300,
-            **extra,
         }
-        if self.api_key:
-            kwargs["api_key"] = self.api_key
-        response = await asyncio.wait_for(litellm.acompletion(**kwargs), timeout=30.0)
+        response = await resilient_completion(
+            primary=self._primary, base_kwargs=base_kwargs,
+            fallbacks=self.fallbacks, timeout=30.0, log=self._log,
+        )
         return (response.choices[0].message.content or "").strip()
 
     def _build_llm_kwargs(self, messages: list) -> dict[str, Any]:
-        model_str, extra = build_model_kwargs(self.provider, self.model, self.api_base)
-        kwargs: dict[str, Any] = {
-            "model": model_str,
+        """Model-agnostic completion kwargs (model/api_key injected per target)."""
+        return {
             "messages": messages,
             "tools": TOOLS,
             "tool_choice": "auto",
-            **extra,
         }
-        if self.api_key:
-            kwargs["api_key"] = self.api_key
-        return kwargs
 
     async def _dispatch(self, fn_name: str, args: dict) -> str:
         """Execute a tool call on the device. Does not handle mark_done."""
@@ -369,7 +364,10 @@ class TestCaseAgent:
             packages = await self.device.list_packages()
             if not packages:
                 return "No packages found (device may not support this query)"
-            return "Installed packages:\n" + "\n".join(sorted(packages))
+            return (
+                "Installed apps (App Name | package — call start_app with the package):\n"
+                + "\n".join(sorted(packages))
+            )
         if fn_name == "wait":
             secs = min(float(args.get("seconds", 2)), 10)
             await asyncio.sleep(secs)
@@ -461,6 +459,7 @@ class TestCaseAgent:
                 case.path, case.expected,
                 self.provider, self.model,
                 self.api_key, self.api_base,
+                fallbacks=self.fallbacks,
             )
             if subgoals and len(subgoals) >= 2:
                 from agent.subagent import run_with_subagents
@@ -475,6 +474,7 @@ class TestCaseAgent:
                 case.path, case.expected,
                 self.provider, self.model,
                 self.api_key, self.api_base,
+                fallbacks=self.fallbacks,
             )
             if plan_text:
                 await self._log(f"  📋 Plan generated:\n{plan_text}")
@@ -498,6 +498,8 @@ class TestCaseAgent:
         steps = 0
         verify_fail_count = 0  # circuit breaker — auto-fail after N verify rejections
         _MAX_VERIFY_FAILS = 3
+        no_action_streak = 0  # consecutive steps where the model emitted no tool call
+        _MAX_NO_ACTION = 5
         last_screenshot_b64 = ""
         llm_img_b64 = ""
         log_lines: list[str] = [goal]
@@ -566,6 +568,7 @@ class TestCaseAgent:
                             resized_b64, img_w, img_h,
                             self.provider, self.model,
                             self.api_key, self.api_base,
+                            fallbacks=self.fallbacks,
                         )
                         if vlm_elements:
                             _ui_elements = vlm_elements
@@ -734,35 +737,22 @@ class TestCaseAgent:
 
                 # ── Decision (LLM) ────────────────────────────────────────────
                 _t1 = time.monotonic()
-                response = None
-                for _attempt in range(2):  # 1 retry on timeout
-                    try:
-                        kwargs = self._build_llm_kwargs(memory.messages)
-                        response = await asyncio.wait_for(
-                            litellm.acompletion(**kwargs),
-                            timeout=120.0,
-                        )
-                        break
-                    except asyncio.TimeoutError:
-                        if _attempt == 0:
-                            await self._log("LLM call timed out — retrying…")
-                            await asyncio.sleep(3)
-                        else:
-                            await self._log("LLM call timed out after 2 attempts")
-                            return CaseResult(
-                                status="error", reason="LLM call timed out",
-                                steps=steps, screenshot_b64=last_screenshot_b64,
-                                log="\n".join(log_lines),
-                                step_logs=step_logs_list,
-                            )
-                    except Exception as e:
-                        await self._log(f"LLM error: {e}")
-                        return CaseResult(
-                            status="error", reason=f"LLM error: {e}",
-                            steps=steps, screenshot_b64=last_screenshot_b64,
-                            log="\n".join(log_lines),
-                            step_logs=step_logs_list,
-                        )
+                try:
+                    response = await resilient_completion(
+                        primary=self._primary,
+                        base_kwargs=self._build_llm_kwargs(memory.messages),
+                        fallbacks=self.fallbacks,
+                        timeout=120.0,
+                        log=self._log,
+                    )
+                except Exception as e:
+                    await self._log(f"LLM error after retries/fallbacks: {e}")
+                    return CaseResult(
+                        status="error", reason=f"LLM error: {e}",
+                        steps=steps, screenshot_b64=last_screenshot_b64,
+                        log="\n".join(log_lines),
+                        step_logs=step_logs_list,
+                    )
 
                 _step_llm_ms = int((time.monotonic() - _t1) * 1000)
 
@@ -789,12 +779,65 @@ class TestCaseAgent:
                     log_lines.append(f"[{steps}] LLM: {msg_content[:400]}")
 
                 tool_calls = getattr(msg, "tool_calls", None) or []
+
+                # Some models (notably GLM-4.5V) narrate the action in plain text
+                # ("I'll tap the Discover tab", "scroll") instead of emitting a
+                # structured tool call. Force one by re-running the SAME step with
+                # tool_choice="required" before wasting a step on a nudge.
                 if not tool_calls:
+                    await self._log("  No structured tool call — retrying with tool_choice=required…")
+                    memory.messages.pop()  # drop the narration-only turn
+                    try:
+                        forced_kwargs = self._build_llm_kwargs(memory.messages)
+                        forced_kwargs["tool_choice"] = "required"
+                        response = await resilient_completion(
+                            primary=self._primary, base_kwargs=forced_kwargs,
+                            fallbacks=self.fallbacks, timeout=120.0, log=self._log,
+                        )
+                        msg = response.choices[0].message
+                        memory.messages.append(msg.model_dump(exclude_none=True))
+                        forced_content = (getattr(msg, "content", "") or "").strip()
+                        if forced_content:
+                            _step_thought = forced_content
+                            await self._log(f"  💭 {forced_content[:400]}")
+                        tool_calls = getattr(msg, "tool_calls", None) or []
+                    except Exception as e:
+                        await self._log(f"  Forced tool call failed: {e}")
+
+                if not tool_calls:
+                    no_action_streak += 1
                     if not msg_content:
                         await self._log("No tool call, no content — nudging…")
                     else:
                         await self._log("No tool call — nudging…")
                     log_lines.append(f"[{steps}] LLM said (no action): {msg_content[:200]}")
+                    # Drop the narration-only assistant turn so it doesn't snowball
+                    # in history and reinforce the "describe instead of act" pattern.
+                    if (memory.messages and memory.messages[-1].get("role") == "assistant"
+                            and not memory.messages[-1].get("tool_calls")):
+                        memory.messages.pop()
+                    # Escalate: a stuck narration loop never fires action-level stuck
+                    # detection (there are no actions), so guard it explicitly.
+                    if no_action_streak == 3:
+                        await self._log("  ⚠ 3 steps with no action — forcing 'back' to break the loop")
+                        try:
+                            await self.device.global_action("back")
+                            await asyncio.sleep(1.0)
+                        except Exception:
+                            pass
+                    if no_action_streak >= _MAX_NO_ACTION:
+                        await self._log(
+                            f"  🛑 {_MAX_NO_ACTION} steps with no tool call — aborting "
+                            f"(model is narrating instead of acting)"
+                        )
+                        return CaseResult(
+                            status="error",
+                            reason=(f"Model produced no tool call for {_MAX_NO_ACTION} consecutive "
+                                    f"steps — it described actions in text but never called a tool. "
+                                    f"Try a model with stronger tool-calling (e.g. Claude)."),
+                            steps=steps, screenshot_b64=last_screenshot_b64,
+                            log="\n".join(log_lines), step_logs=step_logs_list,
+                        )
                     # Nudge: force the LLM to call a tool on the next turn
                     memory.messages.append({
                         "role": "user",
@@ -806,6 +849,9 @@ class TestCaseAgent:
                     })
                     steps += 1
                     continue
+
+                # A tool call was produced — reset the no-action guard.
+                no_action_streak = 0
 
                 # ── Action + Verification ─────────────────────────────────────
                 _t2 = time.monotonic()

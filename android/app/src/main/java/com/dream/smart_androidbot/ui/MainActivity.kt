@@ -16,7 +16,9 @@ import androidx.core.content.ContextCompat
 import com.dream.smart_androidbot.R
 import com.dream.smart_androidbot.config.ConfigManager
 import com.dream.smart_androidbot.databinding.ActivityMainBinding
+import com.dream.smart_androidbot.keepalive.KeepAliveController
 import com.dream.smart_androidbot.keepalive.KeepAliveService
+import com.dream.smart_androidbot.keepalive.KeepAliveStore
 import com.dream.smart_androidbot.service.AgentAccessibilityService
 import com.dream.smart_androidbot.service.ReverseConnectionService
 
@@ -56,13 +58,9 @@ class MainActivity : AppCompatActivity() {
         binding.textDeviceId.text = "ID: ${config.deviceId}"
 
         // Keep-alive toggle
-        binding.switchKeepAlive.isChecked = config.keepAliveEnabled
+        binding.switchKeepAlive.isChecked = KeepAliveStore.getInstance(this).keepScreenAwakeEnabled
         binding.switchKeepAlive.setOnCheckedChangeListener { _, checked ->
-            config.keepAliveEnabled = checked
-            val intent = Intent(this, KeepAliveService::class.java).apply {
-                action = if (checked) KeepAliveService.ACTION_START else KeepAliveService.ACTION_STOP
-            }
-            if (checked) startForegroundService(intent) else startService(intent)
+            KeepAliveController.setEnabled(this, checked)
             Toast.makeText(
                 this,
                 if (checked) "Keep-Alive enabled" else "Keep-Alive disabled",
@@ -134,11 +132,7 @@ class MainActivity : AppCompatActivity() {
         binding.switchKeepAlive.setOnCheckedChangeListener(null)
         binding.switchKeepAlive.isChecked = KeepAliveService.isRunning()
         binding.switchKeepAlive.setOnCheckedChangeListener { _, checked ->
-            config.keepAliveEnabled = checked
-            val intent = Intent(this, KeepAliveService::class.java).apply {
-                action = if (checked) KeepAliveService.ACTION_START else KeepAliveService.ACTION_STOP
-            }
-            if (checked) startForegroundService(intent) else startService(intent)
+            KeepAliveController.setEnabled(this, checked)
         }
         scheduleStatusRefresh()
     }

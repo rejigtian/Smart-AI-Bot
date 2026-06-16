@@ -3,4 +3,7 @@
     <string name="accessibility_service_label">Smart Agent Automation</string>
     <string name="accessibility_service_description">Enables Smart Agent to control the device for automated testing. Required for gesture dispatch and UI inspection.</string>
     <string name="ime_label">Smart Agent Keyboard</string>
+    <string name="keep_screen_awake_notification_title">Keep-Alive</string>
+    <string name="keep_screen_awake_notification_text">Keeping the agent reachable in the background.</string>
+    <string name="keep_screen_awake_notification_stop">Stop</string>
 </resources>

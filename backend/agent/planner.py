@@ -11,16 +11,13 @@ own AgentMemory, keeping parent context at O(subgoals) not O(steps).
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
 from dataclasses import dataclass
 from typing import Any, List, Optional
 
-import litellm
-
-from agent.base import build_model_kwargs
+from agent.llm import ModelTarget, resilient_completion
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +102,7 @@ async def generate_plan(
     model: str,
     api_key: str = "",
     api_base: str = "",
+    fallbacks: Optional[list] = None,
 ) -> Optional[str]:
     """Generate a text execution plan (Phase 1 — injected as pinned message).
 
@@ -116,23 +114,18 @@ async def generate_plan(
 
     task_description = f"Test case: {path}\nExpected result: {expected}"
 
-    model_str, extra = build_model_kwargs(provider, model, api_base)
-    kwargs: dict[str, Any] = {
-        "model": model_str,
-        "messages": [
-            {"role": "system", "content": PLANNER_PROMPT},
-            {"role": "user", "content": task_description},
-        ],
-        "temperature": 0.3,
-        "max_tokens": 500,
-        **extra,
-    }
-    if api_key:
-        kwargs["api_key"] = api_key
-
     try:
-        response = await asyncio.wait_for(
-            litellm.acompletion(**kwargs),
+        response = await resilient_completion(
+            primary=ModelTarget(provider, model, api_key, api_base),
+            base_kwargs={
+                "messages": [
+                    {"role": "system", "content": PLANNER_PROMPT},
+                    {"role": "user", "content": task_description},
+                ],
+                "temperature": 0.3,
+                "max_tokens": 500,
+            },
+            fallbacks=fallbacks or [],
             timeout=30.0,
         )
         plan_text = (response.choices[0].message.content or "").strip()
@@ -161,6 +154,7 @@ async def generate_subgoals(
     model: str,
     api_key: str = "",
     api_base: str = "",
+    fallbacks: Optional[list] = None,
 ) -> Optional[List[SubGoal]]:
     """Decompose a complex task into SubGoal objects for subagent execution.
 
@@ -172,23 +166,18 @@ async def generate_subgoals(
 
     task_description = f"Test case: {path}\nExpected result: {expected}"
 
-    model_str, extra = build_model_kwargs(provider, model, api_base)
-    kwargs: dict[str, Any] = {
-        "model": model_str,
-        "messages": [
-            {"role": "system", "content": SUBGOAL_PROMPT},
-            {"role": "user", "content": task_description},
-        ],
-        "temperature": 0.3,
-        "max_tokens": 800,
-        **extra,
-    }
-    if api_key:
-        kwargs["api_key"] = api_key
-
     try:
-        response = await asyncio.wait_for(
-            litellm.acompletion(**kwargs),
+        response = await resilient_completion(
+            primary=ModelTarget(provider, model, api_key, api_base),
+            base_kwargs={
+                "messages": [
+                    {"role": "system", "content": SUBGOAL_PROMPT},
+                    {"role": "user", "content": task_description},
+                ],
+                "temperature": 0.3,
+                "max_tokens": 800,
+            },
+            fallbacks=fallbacks or [],
             timeout=30.0,
         )
         content = (response.choices[0].message.content or "").strip()

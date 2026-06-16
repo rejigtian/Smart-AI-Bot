@@ -5,7 +5,6 @@ import android.view.KeyEvent
 import androidx.core.content.FileProvider
 import com.dream.smart_androidbot.core.StateRepository
 import com.dream.smart_androidbot.input.AgentKeyboardIME
-import com.dream.smart_androidbot.service.AgentAccessibilityService
 import com.dream.smart_androidbot.service.GestureController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -81,15 +80,25 @@ class ApiHandler(private val context: android.content.Context) {
     }
 
     fun getPackages(): ApiResponse {
-        val svc = AgentAccessibilityService.getInstance()
-            ?: return ApiResponse.Error("Accessibility service not running")
-        val packages = svc.getInstalledPackages()
-        // Return format matching droidrun-portal: list of {packageName} objects
+        val pm = context.packageManager
         val arr = JSONArray()
-        packages.sorted().forEach { pkg ->
-            val o = JSONObject()
-            o.put("packageName", pkg)
-            arr.put(o)
+        try {
+            pm.getInstalledApplications(0)
+                .mapNotNull { appInfo ->
+                    // Only launchable apps: the agent can only start these, and it
+                    // keeps the list short + relevant (no system services / providers).
+                    if (pm.getLaunchIntentForPackage(appInfo.packageName) == null) return@mapNotNull null
+                    val label = pm.getApplicationLabel(appInfo).toString()
+                    appInfo.packageName to label
+                }
+                .sortedBy { it.second.lowercase() }
+                .forEach { (pkg, label) ->
+                    // appName is the display label (e.g. "我是卧底") so the agent can
+                    // map a human app name to its package instead of guessing.
+                    arr.put(JSONObject().put("packageName", pkg).put("appName", label))
+                }
+        } catch (e: Exception) {
+            return ApiResponse.Error("Failed to list packages: ${e.message}")
         }
         return ApiResponse.RawArray(arr)
     }

@@ -240,34 +240,32 @@ async def detect_elements_vlm(
     model: str,
     api_key: str = "",
     api_base: str = "",
+    fallbacks: Optional[list] = None,
 ) -> Tuple[str, List[Dict]]:
     """Detect interactive elements using VLM when a11y tree is empty.
 
     Returns (ui_text, elements) in the same format as format_ui_state(),
     so the caller can use them for SoM annotation and tap_element().
     """
-    import litellm
-    from agent.base import build_model_kwargs
-
-    model_str, extra = build_model_kwargs(provider, model, api_base)
-    kwargs: Dict[str, Any] = {
-        "model": model_str,
-        "messages": [
-            {"role": "system", "content": _VLM_DETECT_PROMPT},
-            {"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
-                {"type": "text", "text": f"Image: {img_width}x{img_height}px. Detect all interactive elements."},
-            ]},
-        ],
-        "temperature": 0.1,
-        "max_tokens": 1000,
-        **extra,
-    }
-    if api_key:
-        kwargs["api_key"] = api_key
+    from agent.llm import ModelTarget, resilient_completion
 
     try:
-        response = await asyncio.wait_for(litellm.acompletion(**kwargs), timeout=30.0)
+        response = await resilient_completion(
+            primary=ModelTarget(provider, model, api_key, api_base),
+            base_kwargs={
+                "messages": [
+                    {"role": "system", "content": _VLM_DETECT_PROMPT},
+                    {"role": "user", "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
+                        {"type": "text", "text": f"Image: {img_width}x{img_height}px. Detect all interactive elements."},
+                    ]},
+                ],
+                "temperature": 0.1,
+                "max_tokens": 1000,
+            },
+            fallbacks=fallbacks or [],
+            timeout=30.0,
+        )
         content = (response.choices[0].message.content or "").strip()
 
         content_clean = re.sub(r"^```[a-z]*\n?", "", content).rstrip("` \n")

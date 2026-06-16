@@ -11,7 +11,6 @@ This prevents the agent from declaring "pass" while still on the wrong screen.
 """
 from __future__ import annotations
 
-import asyncio
 import base64
 import io
 import json
@@ -19,9 +18,8 @@ import logging
 import re
 from typing import Any, Callable, Coroutine, Optional, Tuple
 
-import litellm
-
-from agent.base import DeviceDriver, build_model_kwargs
+from agent.base import DeviceDriver
+from agent.llm import ModelTarget, resilient_completion
 
 logger = logging.getLogger(__name__)
 
@@ -86,11 +84,14 @@ class LLMVerifier:
         model: str,
         api_key: str = "",
         api_base: str = "",
+        fallbacks: Optional[list] = None,
     ) -> None:
         self.provider = provider
         self.model = model
         self.api_key = api_key
         self.api_base = api_base
+        self.fallbacks: list = fallbacks or []
+        self._primary = ModelTarget(provider, model, api_key, api_base)
 
     async def verify(
         self,
@@ -220,20 +221,10 @@ class LLMVerifier:
         ]
 
         try:
-            model_str, extra_kwargs = build_model_kwargs(
-                self.provider, self.model, self.api_base
-            )
-            kwargs: dict[str, Any] = {
-                "model": model_str,
-                "messages": verify_messages,
-                "temperature": 0.1,
-                **extra_kwargs,
-            }
-            if self.api_key:
-                kwargs["api_key"] = self.api_key
-
-            response = await asyncio.wait_for(
-                litellm.acompletion(**kwargs),
+            response = await resilient_completion(
+                primary=self._primary,
+                base_kwargs={"messages": verify_messages, "temperature": 0.1},
+                fallbacks=self.fallbacks,
                 timeout=60.0,
             )
             content = (response.choices[0].message.content or "").strip()

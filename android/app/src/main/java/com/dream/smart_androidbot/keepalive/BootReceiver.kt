@@ -16,16 +16,11 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         val config = ConfigManager.getInstance(context)
-        if (!config.keepAliveEnabled) return
 
-        Log.i("BootReceiver", "Boot complete — starting agent services")
+        Log.i("BootReceiver", "Boot complete — reconciling agent services")
 
-        // Start keep-alive watchdog
-        context.startForegroundService(
-            Intent(context, KeepAliveService::class.java).apply {
-                action = KeepAliveService.ACTION_START
-            }
-        )
+        // Re-establish keep-alive (no-op if the user never enabled it)
+        KeepAliveController.reconcileBestEffort(context)
 
         // Start WS connection if token is configured
         if (config.token.isNotBlank()) {

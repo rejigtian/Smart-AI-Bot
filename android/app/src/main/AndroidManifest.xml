@@ -89,6 +89,15 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- Invisible recovery activity — woken on screen-off/locked to keep the
+             process foregrounded and reset OEM idle-kill timers -->
+        <activity
+            android:name=".keepalive.KeepAliveRecoveryActivity"
+            android:theme="@style/Theme.Transparent"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:exported="false" />
+
         <!-- FileProvider for sharing downloaded APKs with the system installer -->
         <provider
             android:name="androidx.core.content.FileProvider"
