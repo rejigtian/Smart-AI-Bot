@@ -32,7 +32,7 @@ function CaseRow({
 
   if (editing) {
     return (
-      <div className={`px-4 py-3 bg-blue-50 ${index > 0 ? 'border-t' : ''}`}>
+      <div className={`px-4 py-3 bg-primary-soft ${index > 0 ? 'border-t' : ''}`}>
         <div className="text-xs text-gray-500 mb-1">路径 / Path</div>
         <input
           className="w-full border rounded px-2 py-1 text-xs mb-2 font-mono"
@@ -47,7 +47,7 @@ function CaseRow({
         />
         <div className="flex gap-2">
           <button
-            className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
+            className="px-3 py-1 bg-primary text-white text-xs rounded hover:bg-primary-deep disabled:opacity-50"
             disabled={saveMut.isPending}
             onClick={() => saveMut.mutate()}
           >
@@ -109,7 +109,7 @@ function AddCaseRow({ suiteId }: { suiteId: string }) {
   if (!open) {
     return (
       <button
-        className="w-full text-left px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 border-t"
+        className="w-full text-left px-4 py-2.5 text-sm text-primary hover:bg-primary-soft border-t"
         onClick={() => setOpen(true)}
       >
         + 添加用例
@@ -135,7 +135,7 @@ function AddCaseRow({ suiteId }: { suiteId: string }) {
       />
       <div className="flex gap-2">
         <button
-          className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 disabled:opacity-50"
+          className="px-3 py-1 bg-ok text-white text-xs rounded hover:bg-ok disabled:opacity-50"
           disabled={!path.trim() || addMut.isPending}
           onClick={() => addMut.mutate()}
         >
@@ -216,7 +216,7 @@ export default function SuiteDetail() {
 
   return (
     <div>
-      <button className="text-sm text-blue-600 hover:underline mb-4 block" onClick={() => navigate('/suites')}>
+      <button className="text-sm text-primary hover:underline mb-4 block" onClick={() => navigate('/suites')}>
         ← 返回套件列表
       </button>
 
@@ -325,7 +325,7 @@ export default function SuiteDetail() {
             />
 
             <button
-              className="w-full bg-blue-600 text-white py-2 rounded font-medium hover:bg-blue-700 disabled:opacity-50"
+              className="w-full bg-primary text-white py-2 rounded font-medium hover:bg-primary-deep disabled:opacity-50"
               disabled={!deviceId || runMut.isPending}
               onClick={() => runMut.mutate()}
             >

@@ -22,18 +22,23 @@ const NAV_LINKS = [
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-gray-50 text-gray-900">
-        <nav className="bg-white border-b shadow-sm">
+      <div className="min-h-screen bg-canvas-soft text-ink">
+        <nav className="bg-canvas border-b border-hairline">
           <div className="max-w-6xl mx-auto flex items-center gap-6 px-6 h-14">
-            <span className="font-bold text-lg tracking-tight">smart-androidbot</span>
+            <span className="flex items-center gap-2 mr-2">
+              <img src="/favicon.png" alt="" className="w-6 h-6 rounded-md" />
+              <span className="font-mono font-semibold text-base tracking-tight text-ink">smart-ai-bot</span>
+            </span>
             {NAV_LINKS.map(({ to, label, end }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={end}
                 className={({ isActive }) =>
-                  `text-sm font-medium transition-colors ${
-                    isActive ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'
+                  `text-sm font-medium transition-colors h-14 flex items-center border-b-2 -mb-px ${
+                    isActive
+                      ? 'text-primary border-primary'
+                      : 'text-ink-mute border-transparent hover:text-ink'
                   }`
                 }
               >

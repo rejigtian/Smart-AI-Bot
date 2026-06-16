@@ -79,7 +79,7 @@ export default function QuickRun() {
           </label>
           <textarea
             rows={4}
-            className="w-full border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
             placeholder="描述你想让 Agent 完成的任务，例如：打开设置页面，检查 Wi-Fi 是否已开启"
             value={goal}
             onChange={e => setGoal(e.target.value)}
@@ -154,7 +154,7 @@ export default function QuickRun() {
         </div>
 
         <button
-          className="w-full bg-blue-600 text-white py-2 rounded font-medium hover:bg-blue-700 disabled:opacity-50 mt-2"
+          className="w-full bg-primary text-white py-2 rounded font-medium hover:bg-primary-deep disabled:opacity-50 mt-2"
           disabled={!canSubmit}
           onClick={() => runMut.mutate()}
         >

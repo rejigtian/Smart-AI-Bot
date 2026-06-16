@@ -4,10 +4,10 @@ import { fetchRuns, startRun, Run } from '../lib/api'
 
 const STATUS_COLOR: Record<string, string> = {
   pending:   'bg-yellow-50 text-yellow-600',
-  running:   'bg-blue-100 text-blue-700',
-  done:      'bg-green-100 text-green-700',
+  running:   'bg-primary-soft text-primary-deep',
+  done:      'bg-green-100 text-ok',
   error:     'bg-orange-100 text-orange-700',
-  cancelled: 'bg-purple-100 text-purple-700',
+  cancelled: 'bg-primary-soft text-primary-deep',
 }
 
 const TERMINAL = new Set(['done', 'error', 'cancelled'])
@@ -46,7 +46,7 @@ function RunRow({ run }: { run: Run }) {
       >
         <div className="flex items-center gap-3 flex-wrap">
           {statusBadge(run.status)}
-          {isActive && <span className="text-blue-500 animate-pulse text-xs">●</span>}
+          {isActive && <span className="text-primary animate-pulse text-xs">●</span>}
           <span className="font-medium text-sm truncate max-w-xs">
             {(run as any).suite_name ?? run.suite_id.slice(0, 8)}
           </span>
@@ -65,12 +65,12 @@ function RunRow({ run }: { run: Run }) {
           )}
         </div>
         <div className="flex gap-3 mt-1 text-xs">
-          <span className="text-green-600">{run.passed} pass</span>
+          <span className="text-ok">{run.passed} pass</span>
           <span className="text-red-600">{run.failed} fail</span>
           {run.errored > 0 && <span className="text-orange-600">{run.errored} error</span>}
           {run.skipped > 0 && <span className="text-gray-500">{run.skipped} skip</span>}
           <span className="text-gray-400">/ {run.total} total</span>
-          {run.total_tokens > 0 && <span className="text-purple-600">{(run.total_tokens / 1000).toFixed(1)}k tok</span>}
+          {run.total_tokens > 0 && <span className="text-primary">{(run.total_tokens / 1000).toFixed(1)}k tok</span>}
         </div>
       </div>
     </div>

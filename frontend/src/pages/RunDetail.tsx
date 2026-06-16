@@ -4,13 +4,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchRun, fetchResults, fetchSteps, cancelRun, startRun, starResult, TestResult, StepLog } from '../lib/api'
 
 const STATUS_COLOR: Record<string, string> = {
-  pass: 'bg-green-100 text-green-700',
+  pass: 'bg-green-100 text-ok',
   fail: 'bg-red-100 text-red-700',
   error: 'bg-orange-100 text-orange-700',
   skip: 'bg-gray-100 text-gray-500',
   pending: 'bg-yellow-50 text-yellow-600',
-  running: 'bg-blue-100 text-blue-700',
-  cancelled: 'bg-purple-100 text-purple-700',
+  running: 'bg-primary-soft text-primary-deep',
+  cancelled: 'bg-primary-soft text-primary-deep',
 }
 
 const TERMINAL = new Set(['done', 'error', 'cancelled'])
@@ -111,7 +111,7 @@ export default function RunDetail() {
 
   return (
     <div>
-      <button className="text-sm text-blue-600 hover:underline mb-4 block" onClick={() => navigate('/suites')}>
+      <button className="text-sm text-primary hover:underline mb-4 block" onClick={() => navigate('/suites')}>
         ← Back to suites
       </button>
 
@@ -122,12 +122,12 @@ export default function RunDetail() {
           <span className="text-sm text-gray-500">{run.provider}/{run.model}</span>
           <span className="text-sm text-gray-400">{new Date(run.created_at).toLocaleString()}</span>
           <div className="flex gap-3 text-sm ml-auto items-center">
-            <span className="text-green-600 font-medium">{run.passed} pass</span>
+            <span className="text-ok font-medium">{run.passed} pass</span>
             <span className="text-red-600 font-medium">{run.failed} fail</span>
             {run.errored > 0 && <span className="text-orange-600 font-medium">{run.errored} error</span>}
             {run.skipped > 0 && <span className="text-gray-500">{run.skipped} skip</span>}
             <span className="text-gray-400">/ {run.total} total</span>
-            {totalTokens > 0 && <span className="text-purple-600">{(totalTokens / 1000).toFixed(1)}k tokens</span>}
+            {totalTokens > 0 && <span className="text-primary">{(totalTokens / 1000).toFixed(1)}k tokens</span>}
             {isRunning && (
               <button
                 className="ml-2 px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 disabled:opacity-50"
@@ -150,7 +150,7 @@ export default function RunDetail() {
                   href={`/api/runs/${runId}/report?download=true`}
                   target="_blank"
                   rel="noreferrer"
-                  className="ml-2 px-3 py-1 border border-blue-300 text-blue-700 text-xs rounded hover:bg-blue-50"
+                  className="ml-2 px-3 py-1 border border-primary text-primary-deep text-xs rounded hover:bg-primary-soft"
                 >
                   ↓ 下载报告
                 </a>
@@ -173,7 +173,7 @@ export default function RunDetail() {
                 key={r.id}
                 className={`flex items-center px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer ${
                   i > 0 ? 'border-t' : ''
-                } ${selected?.id === r.id ? 'bg-blue-50' : ''}`}
+                } ${selected?.id === r.id ? 'bg-primary-soft' : ''}`}
                 onClick={() => setSelected(r)}
               >
                 <div className="flex-1 min-w-0">
@@ -204,7 +204,7 @@ export default function RunDetail() {
               <div className="flex items-center gap-2 mb-2">
                 <h2 className="font-semibold text-sm text-gray-600 uppercase tracking-wide">Step Replay</h2>
                 <span className="text-xs text-gray-400">{steps.length > 0 ? `${steps.length} steps` : ''}</span>
-                <button className="text-xs text-blue-600 hover:underline ml-auto" onClick={() => setSelected(null)}>
+                <button className="text-xs text-primary hover:underline ml-auto" onClick={() => setSelected(null)}>
                   Show Logs
                 </button>
               </div>
@@ -251,19 +251,19 @@ export default function RunDetail() {
                       <div key={sl.id}>
                       {showSubgoalHeader && (
                         <div className="flex items-center gap-2 mb-2 mt-1">
-                          <span className="text-xs font-bold text-white bg-purple-500 rounded px-2 py-0.5">
+                          <span className="text-xs font-bold text-white bg-primary rounded px-2 py-0.5">
                             SubGoal {sl.subgoal_index}
                           </span>
-                          <span className="text-xs text-purple-700 truncate">{sl.subgoal_desc}</span>
+                          <span className="text-xs text-primary-deep truncate">{sl.subgoal_desc}</span>
                         </div>
                       )}
                       <div key={sl.id} className="bg-white border rounded-lg shadow-sm overflow-hidden">
                         {/* Step header */}
                         <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b">
-                          <span className="text-xs font-bold text-white bg-blue-500 rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
+                          <span className="text-xs font-bold text-white bg-primary rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
                             {sl.step}
                           </span>
-                          <span className="text-xs font-mono text-blue-700 font-medium">{fnName}</span>
+                          <span className="text-xs font-mono text-primary-deep font-medium">{fnName}</span>
                           <span className="ml-auto flex gap-2 text-[10px] text-gray-400">
                             {sl.total_tokens > 0 && <span title="Tokens">{sl.total_tokens} tok</span>}
                             {sl.llm_ms > 0 && <span title="LLM time">{(sl.llm_ms / 1000).toFixed(1)}s LLM</span>}
@@ -291,11 +291,11 @@ export default function RunDetail() {
                         {/* Action + result */}
                         <div className="px-3 pb-3 pt-1 space-y-1">
                           <p className="text-xs font-mono text-gray-700 break-all">
-                            <span className="text-blue-600">→</span> {sl.action}
+                            <span className="text-primary">→</span> {sl.action}
                           </p>
                           {sl.action_result && (
-                            <p className="text-xs text-green-700 break-all">
-                              <span className="text-green-500">↳</span> {sl.action_result}
+                            <p className="text-xs text-ok break-all">
+                              <span className="text-ok">↳</span> {sl.action_result}
                             </p>
                           )}
                         </div>
@@ -323,15 +323,16 @@ export default function RunDetail() {
             </div>
           ) : (
             <div>
-              <h2 className="font-semibold mb-2 text-sm text-gray-600 uppercase tracking-wide">
-                Live Logs {!logsDone && <span className="text-blue-500 animate-pulse">●</span>}
+              <h2 className="font-semibold mb-2 text-xs text-ink-mute uppercase tracking-wider flex items-center gap-2">
+                <span className="font-mono text-primary">$</span> Live Logs
+                {!logsDone && <span className="text-ok animate-pulse">●</span>}
               </h2>
               <div
                 ref={logRef}
-                className="bg-gray-900 text-green-300 text-xs font-mono rounded-lg p-4 h-[480px] overflow-y-auto"
+                className="bg-terminal text-terminal-text text-xs font-mono rounded-md border border-terminal-line p-4 h-[480px] overflow-y-auto leading-relaxed"
               >
-                {logs.map((l, i) => <div key={i}>{l}</div>)}
-                {logsDone && <div className="text-gray-500 mt-2">— stream ended —</div>}
+                {logs.map((l, i) => <div key={i} className="whitespace-pre-wrap">{l}</div>)}
+                {logsDone && <div className="text-terminal-mute mt-2">— stream ended —</div>}
               </div>
             </div>
           )}

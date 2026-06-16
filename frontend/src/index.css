@@ -1,3 +1,24 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    font-family: theme('fontFamily.sans');
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-canvas-soft text-ink;
+  }
+  code, pre, kbd, samp {
+    font-family: theme('fontFamily.mono');
+  }
+}
+
+@layer components {
+  /* Dark terminal block — logs / JSON-RPC / commands / diff */
+  .terminal {
+    @apply bg-terminal text-terminal-text font-mono text-xs rounded-md p-3 overflow-auto;
+  }
+}

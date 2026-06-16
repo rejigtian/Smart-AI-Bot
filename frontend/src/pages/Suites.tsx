@@ -41,7 +41,7 @@ export default function Suites() {
             onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]) }}
           />
           <button
-            className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+            className="bg-primary text-white px-4 py-1.5 rounded text-sm hover:bg-primary-deep disabled:opacity-50"
             onClick={() => fileRef.current?.click()}
             disabled={uploadMut.isPending}
           >
@@ -65,7 +65,7 @@ export default function Suites() {
             <div className="flex-1 min-w-0">
               <Link
                 to={`/suites/${s.id}`}
-                className="font-medium text-blue-600 hover:underline truncate block"
+                className="font-medium text-primary hover:underline truncate block"
               >
                 {s.name}
               </Link>
@@ -75,7 +75,7 @@ export default function Suites() {
             </div>
             <Link
               to={`/suites/${s.id}`}
-              className="text-sm px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="text-sm px-3 py-1.5 bg-primary text-white rounded hover:bg-primary-deep"
             >
               Run
             </Link>

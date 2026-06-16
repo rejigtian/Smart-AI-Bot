@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchRuns, compareRuns, Run, CompareOut } from '../lib/api'
 
 const STATUS_COLOR: Record<string, string> = {
-  pass: 'bg-green-100 text-green-700',
+  pass: 'bg-green-100 text-ok',
   fail: 'bg-red-100 text-red-700',
   error: 'bg-orange-100 text-orange-700',
   skip: 'bg-gray-100 text-gray-500',
@@ -43,7 +43,7 @@ export default function RunCompare() {
 
   return (
     <div>
-      <button className="text-sm text-blue-600 hover:underline mb-4 block" onClick={() => navigate('/runs')}>
+      <button className="text-sm text-primary hover:underline mb-4 block" onClick={() => navigate('/runs')}>
         &larr; Back to runs
       </button>
 
@@ -90,8 +90,8 @@ export default function RunCompare() {
           {/* Summary */}
           <div className="flex gap-4 mb-4 text-sm">
             <div className="px-4 py-2 bg-green-50 border border-green-200 rounded-lg">
-              <span className="text-green-700 font-bold text-lg">{comparison.summary.improved}</span>
-              <span className="text-green-600 ml-1">improved</span>
+              <span className="text-ok font-bold text-lg">{comparison.summary.improved}</span>
+              <span className="text-ok ml-1">improved</span>
             </div>
             <div className="px-4 py-2 bg-red-50 border border-red-200 rounded-lg">
               <span className="text-red-700 font-bold text-lg">{comparison.summary.regressed}</span>
@@ -133,7 +133,7 @@ export default function RunCompare() {
                   if (c.status_a && c.status_b) {
                     if (c.status_a !== 'pass' && c.status_b === 'pass') {
                       change = 'improved'
-                      changeColor = 'text-green-600 font-medium'
+                      changeColor = 'text-ok font-medium'
                     } else if (c.status_a === 'pass' && c.status_b !== 'pass') {
                       change = 'regressed'
                       changeColor = 'text-red-600 font-medium'

@@ -42,7 +42,7 @@ export default function Devices() {
             onKeyDown={e => e.key === 'Enter' && createMut.mutate()}
           />
           <button
-            className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+            className="bg-primary text-white px-4 py-1.5 rounded text-sm hover:bg-primary-deep disabled:opacity-50"
             onClick={() => createMut.mutate()}
             disabled={createMut.isPending}
           >
@@ -65,7 +65,7 @@ export default function Devices() {
           <div key={d.id} className="bg-white border rounded-lg p-4 flex items-center gap-4 shadow-sm">
             <span
               className={`w-3 h-3 rounded-full flex-shrink-0 ${
-                d.status === 'online' ? 'bg-green-500' : 'bg-gray-300'
+                d.status === 'online' ? 'bg-ok' : 'bg-gray-300'
               }`}
             />
             <div className="flex-1 min-w-0">
@@ -74,7 +74,7 @@ export default function Devices() {
                 <span
                   className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
                     d.status === 'online'
-                      ? 'bg-green-100 text-green-700'
+                      ? 'bg-green-100 text-ok'
                       : 'bg-gray-100 text-gray-500'
                   }`}
                 >
@@ -109,9 +109,9 @@ export default function Devices() {
       </div>
 
       {devices.length > 0 && (
-        <div className="mt-6 p-4 bg-blue-50 rounded-lg text-sm text-blue-800">
+        <div className="mt-6 p-4 bg-primary-soft rounded-lg text-sm text-primary-deep">
           <strong>Portal setup:</strong> In the Portal app, go to Custom Connection and set the server URL to{' '}
-          <code className="bg-blue-100 px-1 rounded">ws://YOUR_SERVER/v1/providers/join</code>{' '}
+          <code className="bg-primary-soft px-1 rounded">ws://YOUR_SERVER/v1/providers/join</code>{' '}
           and paste your device token.
         </div>
       )}

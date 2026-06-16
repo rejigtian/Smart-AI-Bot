@@ -146,7 +146,7 @@ export default function Settings() {
               <p className="text-xs font-medium text-gray-600 flex items-center gap-2">
                 {p}
                 {isConfigured(form, p)
-                  ? <span className="text-green-600">✓ 已配置</span>
+                  ? <span className="text-ok">✓ 已配置</span>
                   : <span className="text-gray-400">○ 未配置</span>}
               </p>
               {(PROVIDER_FIELDS[p] || []).map(f => <Field key={f.key as string} f={f} />)}
@@ -223,7 +223,7 @@ export default function Settings() {
         </Collapsible>
 
         <button
-          className="w-full bg-blue-600 text-white py-2 rounded font-medium hover:bg-blue-700 disabled:opacity-50"
+          className="w-full bg-primary text-white py-2 rounded font-medium hover:bg-primary-deep disabled:opacity-50"
           disabled={saveMut.isPending}
           onClick={() => saveMut.mutate()}
         >
