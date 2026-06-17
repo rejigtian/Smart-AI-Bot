@@ -4,6 +4,51 @@ All notable changes to Smart-AI-Bot are documented here.
 
 ---
 
+## v1.0.2
+
+**English**
+
+### Fixed
+- **Overnight crash on Android 14+** — the keep-alive / connection foreground
+  services used the `dataSync` type, which has a 6h/day cap; running overnight
+  threw `ForegroundServiceDidNotStopInTimeException` and crashed the app, which
+  also took the accessibility service down ("enabled but can't run"). Switched
+  to `specialUse` (no time cap).
+- **App launch from the background** — `start_app` now launches the target app
+  from the AccessibilityService context, which is exempt from Android's
+  background-activity-launch restriction, so the app reliably comes to the
+  foreground instead of silently doing nothing.
+- **Newer-model parameter compatibility** — the agent auto-strips optional
+  sampling params (`temperature`, etc.) and retries when a model rejects them
+  (e.g. Bedrock Claude Opus 4.8: "temperature is deprecated"), so runs no longer
+  silently fall back to a weaker model.
+- **Mid-run reconnect** — the agent waits for the device to reconnect (up to
+  150s) when an OEM briefly cuts the backgrounded Portal's socket, instead of
+  failing the case.
+- **Generated content no longer repeats** — starred references redact typed text
+  so the agent regenerates content (e.g. a joke) instead of copying last run's.
+
+### Added
+- **One-tap background-survival setup** — a card that detects battery-optimization
+  state, requests the exemption, and deep-links into the OEM autostart page
+  (MIUI / EMUI / ColorOS / OriginOS / OneUI).
+
+---
+
+**简体中文**
+
+### 修复
+- **Android 14+ 过夜崩溃** —— 保活/连接前台服务用的是 `dataSync` 类型，它有「每天 6 小时」上限；跑过一夜触发 `ForegroundServiceDidNotStopInTimeException` 把 App 崩掉，连带无障碍服务一起失效（"已启用但无法运行"）。改为无时长上限的 `specialUse`。
+- **后台启动 App** —— `start_app` 改为从无障碍服务上下文启动目标 App（豁免 Android 后台 Activity 启动限制），App 能可靠被拉到前台，不再静默失败。
+- **新模型参数兼容** —— 模型拒绝某个可选采样参数时（如 Bedrock Claude Opus 4.8 废弃了 `temperature`），Agent 自动剥掉并重试，不再静默降级到更弱的模型。
+- **运行中断线重连** —— 厂商短暂掐断后台 Portal 的 socket 时，Agent 会等待设备重连（最多 150s），而不是直接判用例失败。
+- **生成内容不再重复** —— 星标参考会脱敏输入文本，Agent 重新生成内容（如笑话），不再照抄上次。
+
+### 新增
+- **一键后台保活设置** —— 检测电池优化状态、申请豁免，并直接跳转到厂商自启动页（MIUI / EMUI / ColorOS / OriginOS / OneUI）。
+
+---
+
 ## v1.0.1
 
 **English**

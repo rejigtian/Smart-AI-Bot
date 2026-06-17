@@ -5,6 +5,7 @@ import android.view.KeyEvent
 import androidx.core.content.FileProvider
 import com.dream.smart_androidbot.core.StateRepository
 import com.dream.smart_androidbot.input.AgentKeyboardIME
+import com.dream.smart_androidbot.service.AgentAccessibilityService
 import com.dream.smart_androidbot.service.GestureController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -51,19 +52,44 @@ class ApiHandler(private val context: android.content.Context) {
     // ── Apps ──────────────────────────────────────────────────────────────────
 
     fun launchApp(packageName: String, activity: String = ""): ApiResponse {
+        // Launch from the AccessibilityService context — accessibility services are
+        // exempt from Android 10+ background-activity-launch (BAL) restrictions, so
+        // the target app reliably comes to the foreground. Launching from the plain
+        // app context (we run in the background) gets silently blocked: startActivity
+        // doesn't throw but the foreground transition never happens.
+        val launcher: android.content.Context =
+            AgentAccessibilityService.getInstance() ?: context
+        val pm = launcher.packageManager
         return try {
             val intent = if (activity.isNotEmpty()) {
                 Intent().apply {
-                    setClassName(packageName, activity)
+                    setClassName(
+                        packageName,
+                        if (activity.startsWith(".")) packageName + activity else activity
+                    )
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
             } else {
-                context.packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                pm.getLaunchIntentForPackage(packageName)?.apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                } ?: return ApiResponse.Error("Could not create intent for $packageName")
+                }
             }
-            context.startActivity(intent)
-            ApiResponse.Success("Launched $packageName")
+            if (intent != null) {
+                launcher.startActivity(intent)
+                return ApiResponse.Success("Launched $packageName")
+            }
+            // Fallback: resolve the main launcher activity by package.
+            val fallback = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                setPackage(packageName)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            if (fallback.resolveActivity(pm) != null) {
+                launcher.startActivity(fallback)
+                ApiResponse.Success("Launched $packageName")
+            } else {
+                ApiResponse.Error("Could not create intent for $packageName")
+            }
         } catch (e: Exception) {
             ApiResponse.Error("Launch failed: ${e.message}")
         }

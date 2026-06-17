@@ -301,7 +301,7 @@ class ReverseConnectionService : Service() {
             val notif = buildNotification("Starting…")
             startForeground(
                 NOTIFICATION_ID, notif,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
             )
             isForeground = true
         } catch (e: Exception) {

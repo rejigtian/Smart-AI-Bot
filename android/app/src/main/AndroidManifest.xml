@@ -9,6 +9,7 @@
     <!-- Foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- Notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -25,6 +26,7 @@
     <!-- Keep-alive: prevent CPU sleep + auto-start on boot -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:name=".SmartAndroidBotApplication"
@@ -63,11 +65,17 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- Reverse WebSocket connection to backend server -->
+        <!-- Reverse WebSocket connection to backend server.
+             specialUse (not dataSync) — dataSync FGS has a 6h/day cap on Android 14+
+             which crashed the whole app (incl. the a11y service) after running overnight. -->
         <service
             android:name=".service.ReverseConnectionService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="agent_device_connection" />
+        </service>
 
         <!-- Headless IME for reliable text input -->
         <service
@@ -83,11 +91,15 @@
                 android:resource="@xml/input_method_config" />
         </service>
 
-        <!-- Keep-alive watchdog service -->
+        <!-- Keep-alive watchdog service (specialUse — see ReverseConnectionService note) -->
         <service
             android:name=".keepalive.KeepAliveService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="agent_keep_alive" />
+        </service>
 
         <!-- Invisible recovery activity — woken on screen-off/locked to keep the
              process foregrounded and reset OEM idle-kill timers -->

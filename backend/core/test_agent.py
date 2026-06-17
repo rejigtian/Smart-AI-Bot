@@ -36,6 +36,29 @@ from core.test_parser import TestCaseData
 
 logger = logging.getLogger(__name__)
 
+
+def _redact_reference_args(fn_name: str, args: dict) -> dict:
+    """Strip free-text *content* from a reference step so the agent reuses the
+    step's structure, not its exact text.
+
+    Navigation args (index, direction, package, key) are kept — they're useful
+    structure. But the text typed by input_text (e.g. a generated joke) is
+    content the agent should regenerate, not copy verbatim. Long string values
+    are collapsed to a placeholder.
+    """
+    if not isinstance(args, dict):
+        return args
+    out = {}
+    for k, v in args.items():
+        if fn_name == "input_text" and k == "text":
+            out[k] = "<text — generate fresh, do not copy>"
+        elif isinstance(v, str) and len(v) > 24:
+            out[k] = v[:24] + "…"
+        else:
+            out[k] = v
+    return out
+
+
 def _resize_screenshot(img_bytes: bytes) -> tuple[bytes, int, int]:
     """Downscale a screenshot to 50% of its original size.
 
@@ -387,8 +410,12 @@ class TestCaseAgent:
             for r in self._reference_examples[:8]:  # cap at 8 steps
                 thought = r.get("thought", "")
                 thought_part = f' 💭 "{thought}"' if thought else ""
+                # Redact free-text content (e.g. a generated joke) so the agent
+                # reuses the STRUCTURE of the step, not the exact text — otherwise
+                # it copies last run's input verbatim every time.
+                safe_args = _redact_reference_args(r.get("fn_name", ""), r.get("args", {}))
                 ref_lines.append(
-                    f"  Step {r['step']}:{thought_part} → {r['fn_name']}({r['args']}) → {r['result']}"
+                    f"  Step {r['step']}:{thought_part} → {r['fn_name']}({safe_args}) → {r['result']}"
                 )
             if len(self._reference_examples) > 8:
                 ref_lines.append(f"  … ({len(self._reference_examples) - 8} more steps omitted)")
@@ -526,14 +553,28 @@ class TestCaseAgent:
                 _t0 = time.monotonic()
                 img_bytes = None
                 last_err = None
-                for attempt in range(3):  # 3 tries: initial + 2 retries
+                attempt = 0
+                while attempt < 3:  # initial + 2 retries (disconnect waits don't count)
                     try:
                         img_bytes = await self.device.screenshot()
                         break
                     except Exception as e:
                         last_err = e
-                        if attempt < 2:
-                            await self._log(f"Screenshot failed ({e}) — retry {attempt + 1}/2 after 2s")
+                        # Device dropped — on aggressive OEMs (MIUI) the backgrounded
+                        # Portal's main thread is frozen, so its reconnect timer is
+                        # delayed and reconnection can take ~2 min. Wait that long
+                        # instead of failing the case; a reconnect doesn't consume a
+                        # retry attempt.
+                        if "not connected" in str(e).lower() and hasattr(self.device, "wait_until_connected"):
+                            await self._log("Device dropped — waiting up to 150s for reconnect…")
+                            if await self.device.wait_until_connected(150.0):
+                                await self._log("Device reconnected — retrying screenshot")
+                                continue
+                            await self._log("Device did not reconnect within 150s — giving up")
+                            break
+                        attempt += 1
+                        if attempt < 3:
+                            await self._log(f"Screenshot failed ({e}) — retry {attempt}/2 after 2s")
                             await asyncio.sleep(2.0)
                         else:
                             await self._log(f"Screenshot failed after 3 attempts: {e}")

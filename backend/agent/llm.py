@@ -25,6 +25,35 @@ from agent.base import build_model_kwargs
 
 logger = logging.getLogger(__name__)
 
+
+def _short(exc: BaseException, limit: int = 240) -> str:
+    """One-line, truncated exception message for logs."""
+    msg = str(exc).replace("\n", " ").strip()
+    return msg[:limit] + ("…" if len(msg) > limit else "")
+
+
+# Optional sampling params some newer models reject (e.g. Bedrock Claude Opus 4.8:
+# "`temperature` is deprecated for this model").
+_OPTIONAL_PARAMS = ("temperature", "top_p", "top_k")
+
+
+def _is_unsupported_param_error(exc: BaseException) -> bool:
+    m = str(exc).lower()
+    return ("deprecated" in m or "not supported" in m or "unsupported" in m
+            or "is not supported" in m) and any(p in m for p in _OPTIONAL_PARAMS + ("parameter",))
+
+
+def _strip_optional_params(kwargs: dict) -> list:
+    removed = [p for p in _OPTIONAL_PARAMS if p in kwargs]
+    for p in removed:
+        kwargs.pop(p, None)
+    return removed
+
+
+# Models that have rejected optional params this process — strip proactively so
+# we don't waste a round-trip rediscovering it on every call.
+_MODELS_REJECTING_OPTIONAL: set = set()
+
 # Errors where retrying the *same* model may succeed — back off and retry.
 _TRANSIENT_EXC = (
     litellm.exceptions.RateLimitError,
@@ -109,6 +138,11 @@ async def resilient_completion(
         if t_idx > 0:
             await _emit(f"  🔻 Falling back to {target.label()}")
         kwargs = target.build_kwargs(base_kwargs)
+        # If this model already rejected optional params earlier, drop them upfront
+        # instead of wasting a round-trip rediscovering it.
+        if target.label() in _MODELS_REJECTING_OPTIONAL:
+            _strip_optional_params(kwargs)
+        stripped_params = False
 
         for attempt in range(max_retries):
             try:
@@ -116,24 +150,34 @@ async def resilient_completion(
                     litellm.acompletion(**kwargs), timeout=timeout
                 )
             except _TERMINAL_EXC as exc:
-                # Retrying the same model won't help — break to next fallback.
                 last_exc = exc
-                await _emit(f"  ⚠ {target.label()} terminal error ({type(exc).__name__}) — switching model")
+                # Newer models may reject an optional sampling param (e.g. Opus 4.8:
+                # "temperature is deprecated"). Strip it and retry the SAME model
+                # before giving up on it.
+                if not stripped_params and _is_unsupported_param_error(exc):
+                    removed = _strip_optional_params(kwargs)
+                    if removed:
+                        stripped_params = True
+                        _MODELS_REJECTING_OPTIONAL.add(target.label())
+                        await _emit(f"  ↻ {target.label()} rejected {removed} — retrying without it (won't resend)")
+                        continue
+                # Retrying the same model won't help — break to next fallback.
+                await _emit(f"  ⚠ {target.label()} terminal error ({type(exc).__name__}): {_short(exc)} — switching model")
                 break
             except _TRANSIENT_EXC as exc:
                 last_exc = exc
                 if attempt < max_retries - 1:
                     delay = backoff_base * (2 ** attempt) + random.uniform(0, 0.5)
                     await _emit(
-                        f"  ⚠ {target.label()} {type(exc).__name__} — retry "
+                        f"  ⚠ {target.label()} {type(exc).__name__}: {_short(exc)} — retry "
                         f"{attempt + 1}/{max_retries - 1} in {delay:.1f}s"
                     )
                     await asyncio.sleep(delay)
                 else:
-                    await _emit(f"  ⚠ {target.label()} exhausted {max_retries} attempts")
+                    await _emit(f"  ⚠ {target.label()} exhausted {max_retries} attempts: {_short(exc)}")
             except Exception as exc:  # unknown — treat as terminal, try next
                 last_exc = exc
-                await _emit(f"  ⚠ {target.label()} unexpected error ({type(exc).__name__}) — switching model")
+                await _emit(f"  ⚠ {target.label()} unexpected error ({type(exc).__name__}): {_short(exc)} — switching model")
                 break
 
     assert last_exc is not None

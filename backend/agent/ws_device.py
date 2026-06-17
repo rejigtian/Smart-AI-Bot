@@ -34,6 +34,25 @@ class WebSocketDevice:
         self._screenshot_width: int = 0
         self._screenshot_height: int = 0
 
+    def is_connected(self) -> bool:
+        conn = connected_devices.get(self.device_id)
+        return conn is not None and conn.is_connected
+
+    async def wait_until_connected(self, timeout: float = 30.0) -> bool:
+        """Poll until the device's Portal reconnects, or timeout.
+
+        Aggressive OEMs (MIUI etc.) cut the background Portal's socket when the
+        target app takes the foreground; the Portal auto-reconnects within a few
+        seconds. Returns True if connected before the deadline.
+        """
+        import asyncio as _asyncio
+        deadline = _asyncio.get_event_loop().time() + timeout
+        while _asyncio.get_event_loop().time() < deadline:
+            if self.is_connected():
+                return True
+            await _asyncio.sleep(0.5)
+        return self.is_connected()
+
     async def _rpc(self, method: str, params: Optional[Dict[str, Any]] = None,
                    timeout: float = 30.0) -> Any:
         # Look up the live connection on every call. If Portal briefly drops and

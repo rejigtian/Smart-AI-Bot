@@ -18,6 +18,7 @@ import com.dream.smart_androidbot.config.ConfigManager
 import com.dream.smart_androidbot.databinding.ActivityMainBinding
 import com.dream.smart_androidbot.keepalive.KeepAliveController
 import com.dream.smart_androidbot.keepalive.KeepAliveService
+import com.dream.smart_androidbot.keepalive.KeepAliveSetup
 import com.dream.smart_androidbot.keepalive.KeepAliveStore
 import com.dream.smart_androidbot.service.AgentAccessibilityService
 import com.dream.smart_androidbot.service.ReverseConnectionService
@@ -71,6 +72,7 @@ class MainActivity : AppCompatActivity() {
         // Status card button actions
         binding.btnEnableAccessibility.setOnClickListener { openAccessibilitySettings() }
         binding.btnEnableIme.setOnClickListener { openImeSettings() }
+        binding.btnBackgroundSetup.setOnClickListener { openBackgroundSetup() }
 
         // Config buttons
         binding.btnSave.setOnClickListener {
@@ -127,6 +129,7 @@ class MainActivity : AppCompatActivity() {
     private fun refreshStatus() {
         updateAccessibilityCard()
         updateImeCard()
+        updateBackgroundCard()
         updateConnectionCard()
         // Sync switch to service runtime state (in case service stopped itself)
         binding.switchKeepAlive.setOnCheckedChangeListener(null)
@@ -135,6 +138,32 @@ class MainActivity : AppCompatActivity() {
             KeepAliveController.setEnabled(this, checked)
         }
         scheduleStatusRefresh()
+    }
+
+    private fun updateBackgroundCard() {
+        val unrestricted = KeepAliveSetup.isBatteryUnrestricted(this)
+        // Green when battery is unrestricted; orange otherwise (autostart can't be
+        // detected programmatically, so we only assert the battery part).
+        setDotColor(binding.dotBackground, unrestricted, warn = !unrestricted)
+        binding.textBackgroundStatus.text =
+            if (unrestricted) "电池已豁免 ✓ — 仍建议确认自启动已开"
+            else "未豁免 — 点「一键设置」防止后台被冻结"
+        binding.btnBackgroundSetup.text = if (unrestricted) "再设置" else "一键设置"
+    }
+
+    private fun openBackgroundSetup() {
+        // Step 1: ask for battery-optimization exemption (system dialog).
+        if (!KeepAliveSetup.isBatteryUnrestricted(this)) {
+            KeepAliveSetup.requestBatteryExemption(this)
+        }
+        // Step 2: jump into the OEM auto-start / background-management page.
+        val ok = KeepAliveSetup.openAutostartSettings(this)
+        Toast.makeText(
+            this,
+            if (ok) "请开启：自启动 + 后台弹出界面，省电策略设为「无限制」（后台弹出界面是后台启动 App 的关键）"
+            else "请在应用详情里开启：自启动、后台弹出界面、取消省电限制",
+            Toast.LENGTH_LONG,
+        ).show()
     }
 
     private fun updateAccessibilityCard() {
