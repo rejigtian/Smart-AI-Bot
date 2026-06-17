@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 import litellm
 
 from db.database import init_db
-from routers import devices, recorder, settings, testsuites, testruns
+from routers import appdist, devices, recorder, settings, testsuites, testruns
 from ws.portal_ws import portal_websocket_endpoint
 
 # Drop provider-unsupported params (e.g. vector_store_ids leaking into Anthropic)
@@ -45,6 +45,7 @@ app.include_router(testsuites.router)
 app.include_router(testruns.router)
 app.include_router(recorder.router)
 app.include_router(settings.router)
+app.include_router(appdist.router)
 
 # Portal reverse WebSocket
 app.add_api_websocket_route("/v1/providers/join", portal_websocket_endpoint)

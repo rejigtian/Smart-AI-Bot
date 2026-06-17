@@ -86,6 +86,173 @@ async def start_run(run_id: str, max_steps: int = 20, step_delay: float = 1.0, m
     state.task = task
 
 
+# ── Folder batch run (one session, many checks) ──────────────────────────────
+
+_DESTRUCTIVE_KW = ("退出登录", "登出", "注销账号", "删除账号", "logout", "log out", "sign out")
+
+
+def _is_destructive(text: str) -> bool:
+    t = (text or "").lower()
+    return any(kw.lower() in t for kw in _DESTRUCTIVE_KW)
+
+
+def _strip_prefix(path: str, base: str) -> str:
+    """Return the breadcrumb of `path` after the `base` prefix (segment-aware)."""
+    segs = [s.strip() for s in (path or "").split(">") if s.strip()]
+    base_segs = [s.strip() for s in (base or "").split(">") if s.strip()]
+    rest = segs[len(base_segs):] if segs[:len(base_segs)] == base_segs else segs
+    return " > ".join(rest)
+
+
+async def start_batch_run(run_id: str, base_path: str, case_ids: list, max_steps: int = 20) -> None:
+    state = RunState()
+    active_runs[run_id] = state
+    task = asyncio.create_task(execute_batch_run(run_id, state, base_path, list(case_ids), max_steps))
+    state.task = task
+
+
+async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
+                            case_ids: list, max_steps: int = 20) -> None:
+    """Run many checks in ONE session: navigate to the base page once, then verify
+    each leaf in turn (returning to base between, using the page stack), recording
+    a per-leaf pass/fail. Destructive checks (logout, …) run last."""
+    async def emit(msg: str) -> None:
+        logger.info("[batch:%s] %s", run_id, msg)
+        await state.emit(msg)
+
+    passed = failed = errored = skipped = 0
+    try:
+        async with AsyncSessionLocal() as session:
+            run_row = await session.get(TestRun, run_id)
+            if not run_row:
+                await emit("ERROR: run not found"); return
+            device_id, provider, model = run_row.device_id, run_row.provider, run_row.model
+            res = await session.execute(select(TestResult).where(TestResult.run_id == run_id))
+            result_rows = {r.case_id: r for r in res.scalars().all()}
+            cres = await session.execute(select(TestCase).where(TestCase.id.in_(case_ids)))
+            case_map = {c.id: c for c in cres.scalars().all()}
+
+        ordered = [cid for cid in case_ids if cid in case_map]
+        safe = [cid for cid in ordered if not _is_destructive(f"{case_map[cid].path} {case_map[cid].expected}")]
+        ordered = safe + [cid for cid in ordered if cid not in safe]
+
+        conn = connected_devices.get(device_id)
+        if conn is None or not conn.is_connected:
+            await emit(f"ERROR: Device {device_id} is not connected"); return
+        device = WebSocketDevice(device_id)
+        _apply_aws_env()
+        api_key, api_base = _load_api_key(provider), _load_api_base(provider)
+        v_provider, v_model, v_key, v_base = _load_verifier_settings()
+        fallbacks = _load_fallback_chain(provider, model)
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(update(TestRun).where(TestRun.id == run_id).values(status="running"))
+            await session.commit()
+
+        await emit(f"Batch: {len(ordered)} checks on one session · base = {base_path} · model = {provider}/{model}")
+        if len(ordered) > len(safe):
+            await emit(f"  ⚠ {len(ordered) - len(safe)} destructive check(s) deferred to the end")
+
+        async def log_cb(m: str) -> None:
+            await emit(m)
+
+        prev_path = ""
+        for idx, cid in enumerate(ordered):
+            case_row = case_map[cid]
+            result_row = result_rows.get(cid)
+            action = _strip_prefix(case_row.path, base_path)
+            await emit(f"\n[{idx + 1}/{len(ordered)}] {action or case_row.path or '(verify on page)'} → {case_row.expected}")
+
+            if base_path:
+                # Folder batch: every leaf is reached from a single base page.
+                goal = (
+                    "You are batch-verifying checkpoints on a base page.\n"
+                    f"BASE PAGE (you should be here; navigate to it first if you're not): {base_path}\n"
+                    f"THIS CHECK: {action or 'verify directly on the base page — no navigation needed'}\n"
+                    "When done: if this check took you into a sub-page, press back to return to the BASE PAGE. "
+                    "Use 'Page stack' in [Device State] to tell whether you're on the base page and how many backs return to it."
+                )
+            else:
+                # Whole-suite tree run: one continuous session over all cases.
+                prev_line = f"The previous check targeted: {prev_path}\n" if prev_path else ""
+                goal = (
+                    f"This is check {idx + 1}/{len(ordered)} in a sequence run on the SAME app — do NOT restart the app.\n"
+                    f"{prev_line}"
+                    "You are very likely already on (or near) the target page from the previous check — "
+                    "read 'Page stack' in [Device State] to see your REAL current position and navigate ONLY the remaining steps. "
+                    "If a previous check left you deep in a sub-page, press back toward where this one needs you.\n"
+                    f"NAVIGATE TO: {case_row.path}\n"
+                    f"VERIFY: {case_row.expected}"
+                )
+            prev_path = case_row.path
+            case_data = TestCaseData(path=goal, expected=case_row.expected)
+
+            # Fresh agent (fresh memory) per check; the device keeps its state between checks.
+            # Single-agent (no subgoal decomposition): each leaf is a small,
+            # mostly-on-one-page check, so over-decomposing wastes steps + re-navigates.
+            agent = TestCaseAgent(
+                device=device, provider=provider, model=model, api_key=api_key, api_base=api_base,
+                max_steps=max_steps, step_delay=1.0, log_callback=log_cb,
+                verifier_provider=v_provider, verifier_model=v_model,
+                verifier_api_key=v_key, verifier_api_base=v_base, fallbacks=fallbacks,
+                allow_subagents=False,
+            )
+            try:
+                case_result = await agent.run(case_data)
+            except asyncio.CancelledError:
+                if result_row:
+                    async with AsyncSessionLocal() as session:
+                        await session.execute(update(TestResult).where(TestResult.id == result_row.id)
+                            .values(status="error", reason="Run cancelled", finished_at=datetime.utcnow()))
+                        await session.commit()
+                raise
+            except Exception as e:
+                case_result = CaseResult(status="error", reason=str(e), steps=0)
+
+            if result_row:
+                async with AsyncSessionLocal() as session:
+                    await session.execute(update(TestResult).where(TestResult.id == result_row.id).values(
+                        status=case_result.status, reason=case_result.reason, steps=case_result.steps,
+                        screenshot_b64=case_result.screenshot_b64, log=case_result.log,
+                        finished_at=datetime.utcnow(),
+                        action_history_json=json.dumps(case_result.action_history),
+                        total_tokens=case_result.total_tokens,
+                    ))
+                    for sl in case_result.step_logs:
+                        session.add(TestStepLog(
+                            result_id=result_row.id, step=sl.step, thought=sl.thought,
+                            action=sl.action, action_result=sl.action_result, screenshot_b64=sl.screenshot_b64,
+                            prompt_tokens=sl.prompt_tokens, completion_tokens=sl.completion_tokens,
+                            total_tokens=sl.total_tokens, perception_ms=sl.perception_ms,
+                            llm_ms=sl.llm_ms, action_ms=sl.action_ms,
+                            subgoal_index=sl.subgoal_index, subgoal_desc=sl.subgoal_desc or "",
+                        ))
+                    await session.commit()
+
+            icon = {"pass": "✅", "fail": "❌", "error": "💥", "skip": "⏭"}.get(case_result.status, "?")
+            await emit(f"  {icon} {case_result.status}: {case_result.reason}")
+            if case_result.status == "pass": passed += 1
+            elif case_result.status == "fail": failed += 1
+            elif case_result.status == "skip": skipped += 1
+            else: errored += 1
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(update(TestRun).where(TestRun.id == run_id)
+                .values(status="done", finished_at=datetime.utcnow()))
+            await session.commit()
+        await emit(f"\nBatch complete: {passed} passed, {failed} failed, {errored} error(s), {skipped} skipped")
+
+    except asyncio.CancelledError:
+        await emit("⛔ Run cancelled by user")
+        async with AsyncSessionLocal() as session:
+            await session.execute(update(TestRun).where(TestRun.id == run_id)
+                .values(status="cancelled", finished_at=datetime.utcnow()))
+            await session.commit()
+    finally:
+        await state.finish()
+        active_runs.pop(run_id, None)
+
+
 async def cancel_run(run_id: str) -> bool:
     """Cancel an active run. Returns True if the run was found and cancelled."""
     state = active_runs.get(run_id)

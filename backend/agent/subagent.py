@@ -96,7 +96,11 @@ async def run_with_subagents(
             model=agent.model,
             api_key=agent.api_key,
             api_base=agent.api_base,
-            max_steps=sg.expected_steps + 2,  # small buffer over estimated steps
+            # The planner's per-subgoal estimate is optimistic — it can't foresee
+            # logins, splash dialogs, popups, etc. Give each subgoal a generous
+            # floor (and never less than the parent's configured budget) so it
+            # isn't starved into a premature failure.
+            max_steps=max(sg.expected_steps + 4, agent.max_steps),
             step_delay=agent.step_delay,
             log_callback=agent.log_callback,
             verifier_provider=agent._verifier.provider,

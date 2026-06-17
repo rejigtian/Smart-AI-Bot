@@ -3,6 +3,7 @@ package com.dream.smart_androidbot.ui
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -22,6 +23,8 @@ import com.dream.smart_androidbot.keepalive.KeepAliveSetup
 import com.dream.smart_androidbot.keepalive.KeepAliveStore
 import com.dream.smart_androidbot.service.AgentAccessibilityService
 import com.dream.smart_androidbot.service.ReverseConnectionService
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 
 class MainActivity : AppCompatActivity() {
 
@@ -34,6 +37,16 @@ class MainActivity : AppCompatActivity() {
     private val notificationPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* result doesn't block usage; foreground service still works */ }
+
+    // QR scanner (ZXing). The CaptureActivity handles the CAMERA runtime prompt.
+    private val qrScanLauncher = registerForActivityResult(ScanContract()) { result ->
+        val contents = result.contents
+        if (contents == null) {
+            Toast.makeText(this, "扫码已取消", Toast.LENGTH_SHORT).show()
+        } else {
+            applyScannedPayload(contents)
+        }
+    }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -73,6 +86,17 @@ class MainActivity : AppCompatActivity() {
         binding.btnEnableAccessibility.setOnClickListener { openAccessibilitySettings() }
         binding.btnEnableIme.setOnClickListener { openImeSettings() }
         binding.btnBackgroundSetup.setOnClickListener { openBackgroundSetup() }
+
+        // Scan QR from the Web UI to fill server URL + token and connect
+        binding.btnScanQr.setOnClickListener {
+            val options = ScanOptions().apply {
+                setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                setPrompt("对准 Web 设备页上的二维码")
+                setBeepEnabled(false)
+                setOrientationLocked(false)
+            }
+            qrScanLauncher.launch(options)
+        }
 
         // Config buttons
         binding.btnSave.setOnClickListener {
@@ -195,11 +219,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateConnectionCard() {
-        val running = ReverseConnectionService.isRunning()
-        setDotColor(binding.dotConnection, running)
-        binding.textConnectionStatus.text =
-            if (running) "Service running — connecting to ${config.serverUrl}"
-            else "Not connected"
+        when (ReverseConnectionService.connectionState()) {
+            ReverseConnectionService.ConnState.CONNECTED -> {
+                setDotColor(binding.dotConnection, ok = true)
+                binding.textConnectionStatus.text = "已连接 ✓ — ${config.serverUrl}"
+            }
+            ReverseConnectionService.ConnState.CONNECTING -> {
+                setDotColor(binding.dotConnection, ok = false, warn = true)
+                binding.textConnectionStatus.text = "连接中… — ${config.serverUrl}"
+            }
+            ReverseConnectionService.ConnState.STOPPED -> {
+                setDotColor(binding.dotConnection, ok = false)
+                binding.textConnectionStatus.text = "未连接"
+            }
+        }
     }
 
     // ── Dot color helper ──────────────────────────────────────────────────────
@@ -263,5 +296,48 @@ class MainActivity : AppCompatActivity() {
         config.serverUrl = binding.editServerUrl.text.toString().trim()
         config.token = binding.editToken.text.toString().trim()
         config.deviceName = binding.editDeviceName.text.toString().trim()
+    }
+
+    // ── QR pairing ────────────────────────────────────────────────────────────
+
+    /**
+     * Parse a `smartbot://connect?url=…&token=…&name=…` payload from a scanned QR,
+     * write it into config + the input fields, and auto-connect.
+     */
+    private fun applyScannedPayload(raw: String) {
+        val uri = try { Uri.parse(raw.trim()) } catch (_: Exception) { null }
+        if (uri == null || uri.scheme != "smartbot" || uri.host != "connect") {
+            Toast.makeText(this, "二维码无效（不是 Smart-AI-Bot 连接码）", Toast.LENGTH_LONG).show()
+            return
+        }
+        val url = uri.getQueryParameter("url")?.trim().orEmpty()
+        val token = uri.getQueryParameter("token")?.trim().orEmpty()
+        val name = uri.getQueryParameter("name")?.trim().orEmpty()
+        if (url.isBlank() || token.isBlank()) {
+            Toast.makeText(this, "二维码缺少 url 或 token", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        config.serverUrl = url
+        config.token = token
+        if (name.isNotBlank()) config.deviceName = name
+
+        // Reflect into the visible fields so the user sees what was paired.
+        binding.editServerUrl.setText(url)
+        binding.editToken.setText(token)
+        if (name.isNotBlank()) binding.editDeviceName.setText(name)
+
+        if (!isAccessibilityEnabled()) {
+            Toast.makeText(this, "已读取连接信息 — 请先开启无障碍服务再连接", Toast.LENGTH_LONG).show()
+            openAccessibilitySettings()
+            return
+        }
+
+        startForegroundService(
+            Intent(this, ReverseConnectionService::class.java).apply {
+                action = ReverseConnectionService.ACTION_START
+            }
+        )
+        Toast.makeText(this, "已读取连接信息，正在连接…", Toast.LENGTH_SHORT).show()
     }
 }

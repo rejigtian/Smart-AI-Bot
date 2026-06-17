@@ -10,7 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.report import generate_html_report
-from core.test_runner import active_runs, cancel_run, run_log_stream, start_run
+from core.test_runner import active_runs, cancel_run, run_log_stream, start_run, start_batch_run
 from db.database import AsyncSessionLocal
 from db.models import TestCase, TestResult, TestRun, TestStepLog, TestSuite
 from ws.portal_ws import connected_devices
@@ -33,6 +33,19 @@ class StartRunRequest(BaseModel):
     max_steps: int = 20
     step_delay: float = 1.0
     max_retries: int = 0
+    # Default: run the suite as one tree-aware session (shared navigation runs
+    # once). Set true to run each case cold + isolated (max isolation, slower).
+    isolated: bool = False
+
+
+class StartBatchRunRequest(BaseModel):
+    suite_id: str
+    device_id: str
+    provider: str = "openai"
+    model: str = "gpt-4o"
+    max_steps: int = 20
+    base_path: str = ""          # the shared navigation prefix to enter once
+    case_ids: List[str]          # the leaf cases to verify in one session
 
 
 class QuickRunRequest(BaseModel):
@@ -164,9 +177,47 @@ async def create_run(req: StartRunRequest, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(run)
 
-    # Launch background task
-    await start_run(run.id, max_steps=req.max_steps, step_delay=req.step_delay, max_retries=req.max_retries)
+    # Launch background task. Default = tree-aware single session (cases already
+    # ordered by TestCase.order, i.e. xmind depth-first order, so siblings are
+    # adjacent → minimal re-navigation). isolated = legacy cold-run-each.
+    if req.isolated:
+        await start_run(run.id, max_steps=req.max_steps, step_delay=req.step_delay, max_retries=req.max_retries)
+    else:
+        await start_batch_run(run.id, base_path="", case_ids=[c.id for c in cases], max_steps=req.max_steps)
 
+    return await _run_out(run, db)
+
+
+@router.post("/batch", response_model=RunOut, status_code=201)
+async def create_batch_run(req: StartBatchRunRequest, db: AsyncSession = Depends(get_db)):
+    """Run a subset of cases (a tree folder's leaves) as ONE session — navigate to
+    the shared base path once, then verify each leaf, with per-leaf results."""
+    conn = connected_devices.get(req.device_id)
+    if conn is None or not conn.is_connected:
+        raise HTTPException(status_code=400, detail=f"Device {req.device_id} is not connected")
+    if not req.case_ids:
+        raise HTTPException(status_code=400, detail="No cases selected")
+
+    cases_res = await db.execute(
+        select(TestCase).where(TestCase.id.in_(req.case_ids), TestCase.suite_id == req.suite_id)
+    )
+    cases = {c.id: c for c in cases_res.scalars().all()}
+    ordered_ids = [cid for cid in req.case_ids if cid in cases]
+    if not ordered_ids:
+        raise HTTPException(status_code=404, detail="None of the selected cases were found")
+
+    run = TestRun(
+        suite_id=req.suite_id, device_id=req.device_id,
+        provider=req.provider, model=req.model, status="pending",
+    )
+    db.add(run)
+    await db.flush()
+    for cid in ordered_ids:
+        db.add(TestResult(run_id=run.id, case_id=cid, status="pending"))
+    await db.commit()
+    await db.refresh(run)
+
+    await start_batch_run(run.id, base_path=req.base_path, case_ids=ordered_ids, max_steps=req.max_steps)
     return await _run_out(run, db)
 
 

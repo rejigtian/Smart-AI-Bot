@@ -4,7 +4,7 @@
     android:layout_height="match_parent"
     android:fillViewport="true"
     android:fitsSystemWindows="true"
-    android:background="?attr/colorSurface">
+    android:background="?android:attr/colorBackground">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -12,14 +12,41 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- ── Title ── -->
-        <TextView
+        <!-- ── Branded header (icon + name, matches the web frontend) ── -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Smart Agent"
-            android:textSize="22sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="4dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+            <ImageView
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@mipmap/ic_launcher"
+                android:layout_marginEnd="12dp"
+                android:contentDescription="@string/app_name" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Smart Agent"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:textColor="?attr/colorOnSurface"
+                    android:letterSpacing="-0.01" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="AI device agent · portal"
+                    android:textSize="12sp"
+                    android:fontFamily="monospace"
+                    android:textColor="?attr/colorPrimary" />
+            </LinearLayout>
+        </LinearLayout>
 
         <TextView
             android:id="@+id/textDeviceId"
@@ -27,7 +54,7 @@
             android:layout_height="wrap_content"
             android:textSize="11sp"
             android:fontFamily="monospace"
-            android:alpha="0.5"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginBottom="20dp" />
 
         <!-- ── Status section header ── -->
@@ -37,7 +64,8 @@
             android:text="SETUP STATUS"
             android:textSize="11sp"
             android:textStyle="bold"
-            android:alpha="0.5"
+            android:fontFamily="monospace"
+            android:textColor="?attr/colorPrimary"
             android:letterSpacing="0.1"
             android:layout_marginBottom="8dp" />
 
@@ -289,9 +317,18 @@
             android:text="CONFIGURATION"
             android:textSize="11sp"
             android:textStyle="bold"
-            android:alpha="0.5"
+            android:fontFamily="monospace"
+            android:textColor="?attr/colorPrimary"
             android:letterSpacing="0.1"
             android:layout_marginBottom="8dp" />
+
+        <!-- Scan QR to connect (fills the fields below + auto-connects) -->
+        <Button
+            android:id="@+id/btnScanQr"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📷 扫码连接 (Scan QR)"
+            android:layout_marginBottom="16dp" />
 
         <!-- Server URL -->
         <com.google.android.material.textfield.TextInputLayout

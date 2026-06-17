@@ -39,6 +39,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class ReverseConnectionService : Service() {
 
+    /** Coarse connection state for the UI: stopped / connecting / connected. */
+    enum class ConnState { STOPPED, CONNECTING, CONNECTED }
+
     companion object {
         private const val TAG = "ReverseConn"
         private const val NOTIFICATION_ID = 1001
@@ -53,6 +56,11 @@ class ReverseConnectionService : Service() {
         @Volatile private var instance: ReverseConnectionService? = null
         fun isRunning(): Boolean = instance != null
 
+        fun connectionState(): ConnState {
+            val inst = instance ?: return ConnState.STOPPED
+            return if (inst.isWsConnected) ConnState.CONNECTED else ConnState.CONNECTING
+        }
+
         /** 401/403/400 — don't retry; configuration is broken. */
         internal fun isTerminalClose(reason: String?): Boolean {
             if (reason == null) return false
@@ -66,6 +74,7 @@ class ReverseConnectionService : Service() {
     }
 
     @Volatile private var webSocketClient: AgentWebSocketClient? = null
+    @Volatile private var isWsConnected = false
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val handler = Handler(Looper.getMainLooper())
@@ -108,6 +117,7 @@ class ReverseConnectionService : Service() {
     override fun onDestroy() {
         isServiceRunning.set(false)
         isReconnecting.set(false)
+        isWsConnected = false
         handler.removeCallbacksAndMessages(null)
         scope.cancel()
         disconnect()
@@ -136,6 +146,7 @@ class ReverseConnectionService : Service() {
         }
 
         try {
+            isWsConnected = false
             updateNotification("Connecting…")
             // Prevent zombie — always close previous before creating new
             disconnect()
@@ -153,12 +164,14 @@ class ReverseConnectionService : Service() {
                 headers = headers,
                 openedCallback = {
                     Log.i(TAG, "Connected")
+                    isWsConnected = true
                     reconnectStartedAtMs = 0L    // reset give-up timer on success
                     updateNotification("Connected to ${uri.host}")
                 },
                 messageCallback = ::handleMessage,
                 closedCallback = { code, reason, _ ->
                     Log.w(TAG, "Disconnected code=$code reason=$reason")
+                    isWsConnected = false
                     logNetworkState("onClose")
                     if (isTerminalClose(reason)) {
                         Log.w(TAG, "Terminal error — not retrying")

@@ -187,6 +187,11 @@ def format_ui_state(
             phone_lines.append(f"  Page: {short} (full: {activity_name})")
         else:
             phone_lines.append(f"  Page: {activity_name}")
+    # Navigation stack — current page is last; lets the agent count "back"s to a base.
+    page_stack = phone.get("pageStack") or []
+    if isinstance(page_stack, list) and len(page_stack) >= 2:
+        shorts = [p.rsplit(".", 1)[-1] for p in page_stack]
+        phone_lines.append(f"  Page stack (current is last): {' > '.join(shorts)}")
     phone_lines.append(f"  Keyboard: {'visible' if is_editable else 'hidden'}")
     if focused_text:
         phone_lines.append(f"  Focused: \"{focused_text}\"")

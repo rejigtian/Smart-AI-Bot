@@ -105,6 +105,17 @@ export const createDevice = (name: string) =>
   api.post<Device>('/devices', { name }).then(r => r.data)
 export const deleteDevice = (id: string) => api.delete(`/devices/${id}`)
 
+// ── App distribution (APK QR download) ───────────────────────────────────────
+
+export interface AppInfo {
+  available: boolean
+  version?: string
+  filename?: string
+  size?: number
+}
+
+export const fetchAppInfo = () => api.get<AppInfo>('/app/latest').then(r => r.data)
+
 // ── Suites ───────────────────────────────────────────────────────────────────
 
 export const fetchSuites = () => api.get<Suite[]>('/suites').then(r => r.data)
@@ -147,7 +158,17 @@ export const startRun = (body: {
   model: string
   max_steps?: number
   max_retries?: number
+  isolated?: boolean
 }) => api.post<Run>('/runs', body).then(r => r.data)
+export const batchRun = (body: {
+  suite_id: string
+  device_id: string
+  provider: string
+  model: string
+  max_steps?: number
+  base_path: string
+  case_ids: string[]
+}) => api.post<Run>('/runs/batch', body).then(r => r.data)
 export const quickRun = (body: {
   goal: string
   expected?: string

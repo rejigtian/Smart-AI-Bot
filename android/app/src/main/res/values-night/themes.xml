@@ -1,11 +1,24 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.Smartandroidbot" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/purple_200</item>
-        <item name="colorPrimaryVariant">@color/purple_700</item>
-        <item name="colorOnPrimary">@color/black</item>
-        <item name="colorSecondary">@color/teal_200</item>
-        <item name="colorSecondaryVariant">@color/teal_200</item>
-        <item name="colorOnSecondary">@color/black</item>
-        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+        <!-- Brighter cyan reads better on the dark terminal surface -->
+        <item name="colorPrimary">@color/cyan_bright</item>
+        <item name="colorOnPrimary">@color/terminal_bg</item>
+        <item name="colorPrimaryContainer">@color/terminal_line</item>
+        <item name="colorOnPrimaryContainer">@color/cyan_bright</item>
+        <item name="colorSecondary">@color/cyan_primary</item>
+        <item name="colorOnSecondary">@color/terminal_bg</item>
+        <item name="colorSecondaryContainer">@color/terminal_line</item>
+        <item name="colorOnSecondaryContainer">@color/cyan_bright</item>
+        <!-- Dark terminal surfaces -->
+        <item name="android:colorBackground">@color/terminal_bg</item>
+        <item name="colorSurface">@color/terminal_surface</item>
+        <item name="colorOnSurface">@color/terminal_text</item>
+        <item name="colorSurfaceVariant">@color/terminal_line</item>
+        <item name="colorOnSurfaceVariant">@color/ink_faint</item>
+        <item name="colorOutline">@color/terminal_line</item>
+        <item name="colorOutlineVariant">@color/terminal_line</item>
+        <item name="colorError">@color/dot_red</item>
+        <item name="android:statusBarColor">@color/terminal_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

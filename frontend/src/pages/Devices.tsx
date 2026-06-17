@@ -1,17 +1,33 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchDevices, createDevice, deleteDevice, Device } from '../lib/api'
+import { QRCodeSVG } from 'qrcode.react'
+import { fetchDevices, createDevice, deleteDevice, fetchAppInfo, Device } from '../lib/api'
+
+// Build the pairing payload the Portal app scans. The WS endpoint is reachable
+// at the same origin the browser is on, because nginx (prod) and the vite dev
+// server both reverse-proxy /v1 → backend.
+function buildConnectUri(device: Device): { uri: string; wsUrl: string } {
+  const proto = location.protocol === 'https:' ? 'wss://' : 'ws://'
+  const wsUrl = `${proto}${location.host}/v1/providers/join`
+  const params = new URLSearchParams({ url: wsUrl, token: device.token, name: device.name })
+  return { uri: `smartbot://connect?${params.toString()}`, wsUrl }
+}
 
 export default function Devices() {
   const qc = useQueryClient()
   const [newName, setNewName] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [qrDevice, setQrDevice] = useState<Device | null>(null)
+  const [showDownload, setShowDownload] = useState(false)
 
   const { data: devices = [], isLoading } = useQuery({
     queryKey: ['devices'],
     queryFn: fetchDevices,
     refetchInterval: 5000,
   })
+
+  const { data: appInfo } = useQuery({ queryKey: ['app-info'], queryFn: fetchAppInfo })
+  const downloadUrl = `${location.origin}/api/app/download`
 
   const createMut = useMutation({
     mutationFn: () => createDevice(newName || 'New Device'),
@@ -23,10 +39,31 @@ export default function Devices() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }),
   })
 
-  const copyToken = (device: Device) => {
-    navigator.clipboard.writeText(device.token)
-    setCopiedId(device.id)
-    setTimeout(() => setCopiedId(null), 2000)
+  const copyToken = async (device: Device) => {
+    const text = device.token
+    try {
+      // navigator.clipboard only exists in secure contexts (HTTPS / localhost).
+      // When the UI is served over plain HTTP on a LAN/IP it is undefined, so
+      // fall back to the legacy execCommand path.
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text)
+      } else {
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.style.position = 'fixed'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.focus()
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+      }
+      setCopiedId(device.id)
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch {
+      // Last resort: surface the token so the user can copy it by hand.
+      window.prompt('Copy this token manually:', text)
+    }
   }
 
   return (
@@ -34,6 +71,12 @@ export default function Devices() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Devices</h1>
         <div className="flex gap-2">
+          <button
+            className="border border-primary text-primary px-4 py-1.5 rounded text-sm hover:bg-primary-soft"
+            onClick={() => setShowDownload(true)}
+          >
+            📱 安装 App
+          </button>
           <input
             className="border rounded px-3 py-1.5 text-sm w-48"
             placeholder="Device name"
@@ -90,6 +133,12 @@ export default function Devices() {
             </div>
             <div className="flex gap-2">
               <button
+                className="text-xs px-3 py-1.5 border border-primary text-primary rounded hover:bg-primary-soft"
+                onClick={() => setQrDevice(d)}
+              >
+                Show QR
+              </button>
+              <button
                 className="text-xs px-3 py-1.5 border rounded hover:bg-gray-50"
                 onClick={() => copyToken(d)}
               >
@@ -110,9 +159,86 @@ export default function Devices() {
 
       {devices.length > 0 && (
         <div className="mt-6 p-4 bg-primary-soft rounded-lg text-sm text-primary-deep">
-          <strong>Portal setup:</strong> In the Portal app, go to Custom Connection and set the server URL to{' '}
+          <strong>Portal setup:</strong> In the Portal app, tap <strong>扫码连接 (Scan QR)</strong> and point it at a
+          device's QR code — or set the server URL to{' '}
           <code className="bg-primary-soft px-1 rounded">ws://YOUR_SERVER/v1/providers/join</code>{' '}
-          and paste your device token.
+          and paste the token manually.
+        </div>
+      )}
+
+      {showDownload && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowDownload(false)}
+        >
+          <div
+            className="bg-white rounded-lg p-6 max-w-sm w-full text-center"
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold mb-1">扫码安装 App</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              {appInfo?.available
+                ? `Portal App ${appInfo.version ?? ''}`
+                : '暂无可下载的安装包'}
+            </p>
+            {appInfo?.available ? (
+              <>
+                <div className="flex justify-center mb-4">
+                  <QRCodeSVG value={downloadUrl} size={240} includeMargin />
+                </div>
+                <p className="text-xs text-gray-400 mb-1">
+                  用手机浏览器扫码下载 APK，安装时允许「未知来源」
+                </p>
+                <a
+                  href={downloadUrl}
+                  className="text-xs text-primary font-mono break-all underline"
+                >
+                  {downloadUrl}
+                </a>
+              </>
+            ) : (
+              <p className="text-xs text-gray-400 mb-4">
+                请先在 <code className="bg-gray-100 px-1 rounded">android/</code> 目录执行{' '}
+                <code className="bg-gray-100 px-1 rounded">./gradlew assembleDebug</code> 生成并归档安装包。
+              </p>
+            )}
+            <button
+              className="w-full text-sm px-4 py-2 border rounded hover:bg-gray-50 mt-4"
+              onClick={() => setShowDownload(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {qrDevice && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setQrDevice(null)}
+        >
+          <div
+            className="bg-white rounded-lg p-6 max-w-sm w-full text-center"
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold mb-1">Scan to connect</h2>
+            <p className="text-sm text-gray-500 mb-4">{qrDevice.name}</p>
+            <div className="flex justify-center mb-4">
+              <QRCodeSVG value={buildConnectUri(qrDevice).uri} size={240} includeMargin />
+            </div>
+            <p className="text-xs text-gray-400 mb-1">
+              In the Portal app tap <strong>扫码连接 (Scan QR)</strong>
+            </p>
+            <p className="text-xs text-gray-400 font-mono break-all mb-4">
+              {buildConnectUri(qrDevice).wsUrl}
+            </p>
+            <button
+              className="w-full text-sm px-4 py-2 border rounded hover:bg-gray-50"
+              onClick={() => setQrDevice(null)}
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
     </div>

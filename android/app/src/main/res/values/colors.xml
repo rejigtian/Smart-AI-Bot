@@ -1,13 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="dot_green">#FF4CAF50</color>
-    <color name="dot_orange">#FFFF9800</color>
-    <color name="dot_red">#FFF44336</color>
+
+    <!-- ── cyan-terminal design tokens (mirrors the web frontend) ── -->
+    <!-- Electric-cyan primary -->
+    <color name="cyan_primary">#FF06B6D4</color>
+    <color name="cyan_deep">#FF0891B2</color>
+    <color name="cyan_soft">#FFECFEFF</color>
+    <color name="cyan_bright">#FF22D3EE</color>
+    <!-- Cool near-black ink scale -->
+    <color name="ink">#FF0F172A</color>
+    <color name="ink_secondary">#FF334155</color>
+    <color name="ink_mute">#FF64748B</color>
+    <color name="ink_faint">#FF94A3B8</color>
+    <!-- Surfaces -->
+    <color name="canvas">#FFFFFFFF</color>
+    <color name="canvas_soft">#FFF8FAFC</color>
+    <color name="canvas_cool">#FFF1F5F9</color>
+    <color name="hairline">#FFE2E8F0</color>
+    <color name="hairline_strong">#FFCBD5E1</color>
+    <!-- Dark terminal block -->
+    <color name="terminal_bg">#FF0B1120</color>
+    <color name="terminal_surface">#FF111A2E</color>
+    <color name="terminal_line">#FF1E293B</color>
+    <color name="terminal_text">#FFE2E8F0</color>
+
+    <!-- Status dots -->
+    <color name="dot_green">#FF10B981</color>
+    <color name="dot_orange">#FFF59E0B</color>
+    <color name="dot_red">#FFEF4444</color>
 </resources>

@@ -10,8 +10,8 @@ android {
         applicationId = "com.dream.smart_androidbot"
         minSdk = 30
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -36,6 +36,25 @@ android {
     }
 }
 
+// ── Archive the built debug APK as SmartAgent-<version>.apk ──────────────────
+// Copies into backend/data/apk/ (served by the backend for QR download) and
+// overwrites any previously archived APK so only the latest remains.
+tasks.register<Copy>("archiveApk") {
+    val apkDir = rootProject.file("../backend/data/apk")
+    doFirst {
+        apkDir.mkdirs()
+        apkDir.listFiles { f -> f.extension == "apk" }?.forEach { it.delete() }
+    }
+    from(layout.buildDirectory.dir("outputs/apk/debug"))
+    include("*.apk")
+    into(apkDir)
+    rename { "SmartAgent-${android.defaultConfig.versionName}.apk" }
+}
+
+afterEvaluate {
+    tasks.named("assembleDebug") { finalizedBy("archiveApk") }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
@@ -44,6 +63,7 @@ dependencies {
     implementation(libs.java.websocket)
     implementation(libs.okhttp)
     implementation(libs.gson)
+    implementation(libs.zxing.android.embedded)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

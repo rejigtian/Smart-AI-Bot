@@ -300,6 +300,7 @@ class TestCaseAgent:
         reference_examples: Optional[list] = None,  # starred action records from past runs
         lessons_learned: Optional[list] = None,  # negative experiences from past runs
         fallbacks: Optional[list] = None,  # list[ModelTarget] for resilient_completion
+        allow_subagents: bool = True,  # decompose complex tasks into sub-agents
     ):
         self.device = device
         self.provider = provider
@@ -309,6 +310,7 @@ class TestCaseAgent:
         self.max_steps = max_steps
         self.step_delay = step_delay
         self.log_callback = log_callback
+        self.allow_subagents = allow_subagents
         self.fallbacks: list = fallbacks or []
         self._primary = ModelTarget(provider, model, api_key, api_base)
         # Verifier uses its own model if configured, otherwise falls back to the agent model.
@@ -481,12 +483,17 @@ class TestCaseAgent:
         # ── Subagent routing (Phase 2) ───────────────────────────────
         # Complex tasks are decomposed into SubGoals, each executed by an
         # isolated sub-agent with its own AgentMemory (Hermes-style).
+        # Skipped in batch mode: each batch leaf is a small, single-page check
+        # and should NOT be re-decomposed (that over-thinks + re-navigates).
         try:
-            subgoals = await generate_subgoals(
-                case.path, case.expected,
-                self.provider, self.model,
-                self.api_key, self.api_base,
-                fallbacks=self.fallbacks,
+            subgoals = (
+                await generate_subgoals(
+                    case.path, case.expected,
+                    self.provider, self.model,
+                    self.api_key, self.api_base,
+                    fallbacks=self.fallbacks,
+                )
+                if self.allow_subagents else None
             )
             if subgoals and len(subgoals) >= 2:
                 from agent.subagent import run_with_subagents

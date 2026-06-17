@@ -41,6 +41,26 @@ class AgentAccessibilityService : AccessibilityService() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // Best-effort navigation stack (Activity names), maintained from the foreground
+    // Activity seen at each state read. The OS back stack isn't readable by an
+    // accessibility service, so we approximate: a new Activity is a push; seeing an
+    // Activity already in the stack is a pop back to that level.
+    private val pageStack = mutableListOf<String>()
+
+    private fun updatePageStack(activity: String?) {
+        if (activity.isNullOrEmpty()) return
+        synchronized(pageStack) {
+            val idx = pageStack.lastIndexOf(activity)
+            when {
+                pageStack.isEmpty() -> pageStack.add(activity)
+                pageStack.last() == activity -> {}                       // same page
+                idx >= 0 -> while (pageStack.size > idx + 1) pageStack.removeAt(pageStack.size - 1)  // popped back
+                else -> pageStack.add(activity)                          // new page pushed
+            }
+            while (pageStack.size > 20) pageStack.removeAt(0)            // cap depth
+        }
+    }
+
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun onServiceConnected() {
@@ -109,6 +129,7 @@ class AgentAccessibilityService : AccessibilityService() {
         val appName = pkgName?.let { getAppName(it) }
         val isEditable = focused?.isEditable ?: false
         val activityName = getTopActivityName()
+        updatePageStack(activityName)
         root?.recycle()
         return PhoneState(
             focusedElement = focused,
@@ -116,7 +137,8 @@ class AgentAccessibilityService : AccessibilityService() {
             packageName = pkgName,
             appName = appName,
             isEditable = isEditable,
-            activityName = activityName
+            activityName = activityName,
+            pageStack = synchronized(pageStack) { pageStack.toList() },
         )
     }
 

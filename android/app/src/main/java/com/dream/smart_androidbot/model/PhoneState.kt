@@ -8,5 +8,8 @@ data class PhoneState(
     val packageName: String?,
     val appName: String?,
     val isEditable: Boolean,
-    val activityName: String?
+    val activityName: String?,
+    // Navigation stack of Activity names, oldest first; current page is last.
+    // Lets the agent know how many "back"s return to a base page.
+    val pageStack: List<String> = emptyList()
 )

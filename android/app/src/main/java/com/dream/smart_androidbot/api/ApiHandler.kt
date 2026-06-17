@@ -149,6 +149,7 @@ class ApiHandler(private val context: android.content.Context) {
         phoneState.put("activityName", state?.activityName ?: "")
         phoneState.put("keyboardVisible", state?.keyboardVisible ?: false)
         phoneState.put("isEditable", state?.isEditable ?: false)
+        phoneState.put("pageStack", JSONArray(state?.pageStack ?: emptyList<String>()))
 
         // a11y_tree — full tree with boundsInScreen / isVisibleToUser / isFocusable
         val a11yTree = StateRepository.getFullTree()
