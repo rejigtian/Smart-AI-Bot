@@ -26,6 +26,31 @@ object KeepAliveSetup {
         return pm.isIgnoringBatteryOptimizations(context.packageName)
     }
 
+    /**
+     * True if we can draw overlays. This is the portable signal for the
+     * background-activity-launch (BAL) exemption that lets the backgrounded
+     * Portal app launch other apps via start_app. Without it, launches are
+     * silently dropped once the app leaves the foreground.
+     */
+    fun canDrawOverlays(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
+
+    /** Open the system "display over other apps" screen for this package. */
+    fun requestOverlayPermission(context: Context): Boolean {
+        return try {
+            context.startActivity(
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "overlay-permission request failed, falling back to app details", e)
+            openAppDetails(context)
+        }
+    }
+
     /** Fire the system dialog that asks the user to exempt us from battery optimization. */
     fun requestBatteryExemption(context: Context): Boolean {
         return try {

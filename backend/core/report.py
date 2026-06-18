@@ -328,7 +328,11 @@ async def generate_html_report(run_id: str) -> str:
 <div id="replay-modal" class="modal-overlay" onclick="closeAll()">
   <div class="modal-box" onclick="event.stopPropagation()">
     <button class="modal-close" onclick="closeAll()">✕</button>
-    <div id="replay-title" style="padding:16px 20px 0;font-size:14px;font-weight:600;color:#374151;"></div>
+    <div style="display:flex;align-items:center;gap:12px;padding:16px 20px 0;">
+      <span id="replay-title" style="font-size:14px;font-weight:600;color:#374151;"></span>
+      <button id="replay-play" onclick="toggleReplay()" style="font-size:12px;border:1px solid #06b6d4;color:#0891b2;background:#ecfeff;border-radius:4px;padding:3px 10px;cursor:pointer;">&#x25B6; 自动播放</button>
+      <span id="replay-counter" style="font-size:12px;color:#9ca3af;font-family:monospace;"></span>
+    </div>
     <div id="replay-content" class="step-grid"></div>
   </div>
 </div>
@@ -383,14 +387,49 @@ async def generate_html_report(run_id: str) -> str:
 <script>
 var STEPS = {steps_json};
 var LOGS  = {logs_json};
+var replayTimer = null;
+var replayIdx = 0;
 
 function closeAll() {{
+  stopReplay();
   document.querySelectorAll('.modal-overlay').forEach(function(m) {{
     m.classList.remove('active');
   }});
   document.getElementById('img-content').innerHTML   = '';
   document.getElementById('replay-content').innerHTML = '';
   document.getElementById('log-content').textContent  = '';
+}}
+
+/* ── Step-replay autoplay (录屏回放) ── */
+function stopReplay() {{
+  if (replayTimer) {{ clearTimeout(replayTimer); replayTimer = null; }}
+  var btn = document.getElementById('replay-play');
+  if (btn) btn.innerHTML = '&#x25B6; 自动播放';
+}}
+function replayShow(i) {{
+  var cards = document.getElementById('replay-content').children;
+  if (!cards.length) return;
+  for (var j = 0; j < cards.length; j++) cards[j].style.outline = '';
+  var c = cards[i];
+  if (!c) return;
+  c.style.outline = '3px solid #06b6d4';
+  c.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+  var counter = document.getElementById('replay-counter');
+  if (counter) counter.textContent = (i + 1) + '/' + cards.length;
+}}
+function toggleReplay() {{
+  if (replayTimer) {{ stopReplay(); return; }}
+  var cards = document.getElementById('replay-content').children;
+  if (!cards.length) return;
+  document.getElementById('replay-play').innerHTML = '&#x23F8; 暂停';
+  if (replayIdx >= cards.length) replayIdx = 0;
+  var tick = function() {{
+    replayShow(replayIdx);
+    if (replayIdx >= cards.length - 1) {{ stopReplay(); return; }}
+    replayIdx++;
+    replayTimer = setTimeout(tick, 900);
+  }};
+  tick();
 }}
 
 document.addEventListener('keydown', function(e) {{
@@ -447,7 +486,10 @@ function openReplay(key) {{
     container.appendChild(card);
   }});
 
+  stopReplay();
+  replayIdx = 0;
   document.getElementById('replay-title').textContent = 'Step Replay — ' + steps.length + ' steps';
+  document.getElementById('replay-counter').textContent = steps.length + ' 帧';
   document.getElementById('replay-modal').classList.add('active');
 }}
 

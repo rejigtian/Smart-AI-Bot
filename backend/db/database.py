@@ -53,3 +53,12 @@ async def init_db():
             "parameters": "TEXT DEFAULT ''",
             "checkpoints": "TEXT DEFAULT ''",
         })
+
+        # suite_id + task_keyword were added to LessonLearned after the table
+        # first shipped. Without these, the lesson load/save queries reference
+        # non-existent columns and silently fail — i.e. NO cross-run lessons at
+        # all on pre-existing databases.
+        await _ensure_columns("lessons_learned", {
+            "suite_id": "VARCHAR",
+            "task_keyword": "VARCHAR DEFAULT ''",
+        })

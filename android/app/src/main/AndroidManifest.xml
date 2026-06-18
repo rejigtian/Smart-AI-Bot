@@ -32,6 +32,13 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Background app launch (BAL): holding the overlay permission + briefly
+         showing an overlay window gives our UID a visible window, which exempts
+         us from Android 10+ background-activity-launch limits. Without this,
+         start_app silently fails whenever the Portal app is not in the
+         foreground. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <application
         android:name=".SmartAndroidBotApplication"
         android:allowBackup="true"

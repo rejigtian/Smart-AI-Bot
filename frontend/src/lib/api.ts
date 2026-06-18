@@ -44,6 +44,7 @@ export interface Run {
   skipped: number
   total: number
   total_tokens: number
+  has_recording: boolean
 }
 
 export interface TestResult {
@@ -118,9 +119,21 @@ export const fetchAppInfo = () => api.get<AppInfo>('/app/latest').then(r => r.da
 
 export interface ServerInfo {
   lan_ip: string
+  port: number  // backend's own port — phones connect here directly (not the dev-proxy port)
 }
 
 export const fetchServerInfo = () => api.get<ServerInfo>('/server/info').then(r => r.data)
+
+// ── Live device screen ───────────────────────────────────────────────────────
+
+export interface DeviceCapabilities {
+  online: boolean
+  adb_available: boolean
+  adb_serials: string[]
+}
+
+export const fetchDeviceCapabilities = (id: string) =>
+  api.get<DeviceCapabilities>(`/devices/${id}/capabilities`).then(r => r.data)
 
 // ── Suites ───────────────────────────────────────────────────────────────────
 
@@ -184,6 +197,7 @@ export const quickRun = (body: {
   max_steps?: number
 }) => api.post<Run>('/runs/quick', body).then(r => r.data)
 export const cancelRun = (id: string) => api.post(`/runs/${id}/cancel`)
+export const deleteRun = (id: string) => api.delete(`/runs/${id}`)
 export const starResult = (runId: string, resultId: string) =>
   api.post<{ id: string; is_starred: boolean }>(`/runs/${runId}/results/${resultId}/star`).then(r => r.data)
 export const fetchSteps = (runId: string, resultId: string) =>
@@ -217,6 +231,32 @@ export const compareRuns = (a: string, b: string) =>
 
 export const addCase = (suiteId: string, data: { path: string; expected: string }) =>
   api.post<TestCase>(`/suites/${suiteId}/cases`, data).then(r => r.data)
+
+// ── Per-case run history (memory hygiene) ─────────────────────────────────────
+
+export interface CaseResult {
+  id: string
+  run_id: string
+  status: string
+  reason: string
+  steps: number
+  total_tokens: number
+  is_starred: boolean
+  provider: string
+  model: string
+  created_at: string
+  finished_at: string | null
+}
+
+export const fetchCaseResults = (suiteId: string, caseId: string) =>
+  api.get<CaseResult[]>(`/suites/${suiteId}/cases/${caseId}/results`).then(r => r.data)
+
+export const deleteCaseResult = (suiteId: string, caseId: string, resultId: string) =>
+  api.delete(`/suites/${suiteId}/cases/${caseId}/results/${resultId}`)
+
+export const purgeCaseResults = (suiteId: string, caseId: string, scope: 'all' | 'failed') =>
+  api.delete<{ deleted: number }>(`/suites/${suiteId}/cases/${caseId}/results`, { params: { scope } })
+    .then(r => r.data)
 export const updateCase = (suiteId: string, caseId: string, data: { path: string; expected: string }) =>
   api.put<TestCase>(`/suites/${suiteId}/cases/${caseId}`, data).then(r => r.data)
 export const deleteCase = (suiteId: string, caseId: string) =>

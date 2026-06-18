@@ -20,6 +20,10 @@ _KEY_CODES = {
     "enter": 66, "del": 67, "tab": 61, "space": 62,
 }
 
+# How long any RPC waits for the Portal to reconnect after a brief drop before
+# giving up. Reconnects are usually <3s; OEM background-freeze can take ~2min.
+_RECONNECT_WAIT_SEC = 90.0
+
 
 class WebSocketDevice:
     def __init__(self, device_id: str):
@@ -59,10 +63,38 @@ class WebSocketDevice:
         # reconnects mid-run, connected_devices[device_id] is replaced with a fresh
         # DeviceConnection — we must use that, not a stale reference captured at
         # WebSocketDevice construction time.
-        conn = connected_devices.get(self.device_id)
-        if conn is None or not conn.is_connected:
-            raise RuntimeError(f"Device {self.device_id} is not connected")
-        return await send_rpc(conn, method, params, timeout=timeout)
+        #
+        # Tolerate a brief disconnect: an aggressive-OEM background freeze or a
+        # dev-proxy hiccup can drop the socket for a few seconds. Rather than
+        # failing the whole step, wait for the Portal to reconnect and retry the
+        # call ONCE. A genuine RPC timeout (device slow, not disconnected) is NOT
+        # retried — only connection-level failures are.
+        last_err: Optional[Exception] = None
+        for attempt in range(2):
+            conn = connected_devices.get(self.device_id)
+            if conn is None or not conn.is_connected:
+                if await self.wait_until_connected(_RECONNECT_WAIT_SEC):
+                    conn = connected_devices.get(self.device_id)
+                if conn is None or not conn.is_connected:
+                    raise RuntimeError(f"Device {self.device_id} is not connected")
+            try:
+                return await send_rpc(conn, method, params, timeout=timeout)
+            except (RuntimeError, ConnectionError) as e:
+                # send_rpc raises RuntimeError("…send timeout…connection appears
+                # dead") or RuntimeError("Device disconnected") on connection loss.
+                msg = str(e).lower()
+                transient = (
+                    "disconnect" in msg
+                    or "connection appears dead" in msg
+                    or "not connected" in msg
+                )
+                if attempt == 0 and transient and await self.wait_until_connected(_RECONNECT_WAIT_SEC):
+                    last_err = e
+                    continue  # retry once on the fresh connection
+                raise
+        if last_err:
+            raise last_err
+        raise RuntimeError(f"Device {self.device_id} is not connected")
 
     def _img_to_abs(self, img_x: int, img_y: int) -> tuple[int, int]:
         """Convert half-size screenshot pixel coordinates to device pixel coordinates.

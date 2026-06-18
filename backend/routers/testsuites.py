@@ -5,12 +5,12 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.test_parser import parse_file
 from db.database import AsyncSessionLocal
-from db.models import TestCase, TestResult, TestRun, TestSuite
+from db.models import LessonLearned, TestCase, TestResult, TestRun, TestStepLog, TestSuite
 
 router = APIRouter(prefix="/api/suites", tags=["suites"])
 
@@ -266,3 +266,109 @@ async def get_trends(suite_id: str, limit: int = 20, db: AsyncSession = Depends(
         ))
 
     return points
+
+
+# ── Per-case run history (memory hygiene) ─────────────────────────────────────
+# A case's reference example (starred / last-pass action history) and its
+# lessons learned all derive from TestResult rows. Listing and pruning those
+# rows lets the user curate what the agent "remembers" for the next run.
+
+class CaseResultOut(BaseModel):
+    id: str            # result id
+    run_id: str
+    status: str        # pass / fail / error / skip
+    reason: str
+    steps: int
+    total_tokens: int
+    is_starred: bool
+    provider: str
+    model: str
+    created_at: str    # the run's start time
+    finished_at: Optional[str] = None
+
+
+async def _require_case(suite_id: str, case_id: str, db: AsyncSession) -> TestCase:
+    case = await db.get(TestCase, case_id)
+    if not case or case.suite_id != suite_id:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return case
+
+
+@router.get("/{suite_id}/cases/{case_id}/results", response_model=List[CaseResultOut])
+async def list_case_results(suite_id: str, case_id: str, db: AsyncSession = Depends(get_db)):
+    """All run records for one case, newest first — the raw material of memory."""
+    await _require_case(suite_id, case_id, db)
+    rows = await db.execute(
+        select(TestResult, TestRun)
+        .join(TestRun, TestResult.run_id == TestRun.id)
+        .where(TestResult.case_id == case_id)
+        .order_by(TestRun.created_at.desc())
+    )
+    out: List[CaseResultOut] = []
+    for result, run in rows.all():
+        out.append(CaseResultOut(
+            id=result.id,
+            run_id=result.run_id,
+            status=result.status,
+            reason=result.reason,
+            steps=result.steps,
+            total_tokens=result.total_tokens,
+            is_starred=result.is_starred,
+            provider=run.provider,
+            model=run.model,
+            created_at=run.created_at.isoformat(),
+            finished_at=result.finished_at.isoformat() if result.finished_at else None,
+        ))
+    return out
+
+
+async def _purge_results(results: List[TestResult], db: AsyncSession) -> int:
+    """Delete results + their step logs (cascade) + lessons distilled from them.
+
+    Lessons are matched by (case_id, source_run_id) so the agent stops being
+    primed by experience the user just discarded.
+    """
+    for r in results:
+        await db.execute(
+            delete(LessonLearned).where(
+                LessonLearned.case_id == r.case_id,
+                LessonLearned.source_run_id == r.run_id,
+            )
+        )
+        await db.execute(delete(TestStepLog).where(TestStepLog.result_id == r.id))
+        await db.execute(delete(TestResult).where(TestResult.id == r.id))
+    await db.commit()
+    return len(results)
+
+
+@router.delete("/{suite_id}/cases/{case_id}/results/{result_id}", status_code=204)
+async def delete_case_result(
+    suite_id: str, case_id: str, result_id: str, db: AsyncSession = Depends(get_db)
+):
+    """Delete a single run record for a case (and the memory derived from it)."""
+    await _require_case(suite_id, case_id, db)
+    result = await db.get(TestResult, result_id)
+    if not result or result.case_id != case_id:
+        raise HTTPException(status_code=404, detail="Result not found")
+    await _purge_results([result], db)
+
+
+class PurgeOut(BaseModel):
+    deleted: int
+
+
+@router.delete("/{suite_id}/cases/{case_id}/results", response_model=PurgeOut)
+async def delete_case_results(
+    suite_id: str, case_id: str, scope: str = "all", db: AsyncSession = Depends(get_db)
+):
+    """Bulk-delete a case's run records. scope=all clears everything; scope=failed
+    keeps only passing/skipped records (drops fail + error)."""
+    await _require_case(suite_id, case_id, db)
+    if scope not in ("all", "failed"):
+        raise HTTPException(status_code=400, detail="scope must be 'all' or 'failed'")
+    stmt = select(TestResult).where(TestResult.case_id == case_id)
+    if scope == "failed":
+        stmt = stmt.where(TestResult.status.in_(["fail", "error"]))
+    rows = (await db.execute(stmt)).scalars().all()
+    n = await _purge_results(list(rows), db)
+    return PurgeOut(deleted=n)

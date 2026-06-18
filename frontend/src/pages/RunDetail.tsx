@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchRun, fetchResults, fetchSteps, cancelRun, startRun, starResult, TestResult, StepLog } from '../lib/api'
+import { fetchRun, fetchResults, fetchSteps, cancelRun, startRun, starResult, fetchDevices, TestResult, StepLog } from '../lib/api'
+import LivePanel from '../components/LivePanel'
+import ScreenshotReplay from '../components/ScreenshotReplay'
 
 const STATUS_COLOR: Record<string, string> = {
   pass: 'bg-green-100 text-ok',
@@ -38,6 +40,14 @@ export default function RunDetail() {
     queryFn: () => fetchResults(runId!),
     refetchInterval: TERMINAL.has(run?.status ?? '') ? false : 3000,
   })
+
+  // The run's device — for the live-screen panel (watch the device during a run).
+  const { data: devices = [] } = useQuery({
+    queryKey: ['devices'],
+    queryFn: fetchDevices,
+    refetchInterval: 5000,
+  })
+  const runDevice = devices.find(d => d.id === run?.device_id) ?? null
 
   // SSE log stream — reconnecting replays full history from the backend buffer
   useEffect(() => {
@@ -160,7 +170,8 @@ export default function RunDetail() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="flex gap-6 items-start">
+        <div className="flex-1 min-w-0 grid grid-cols-2 gap-6">
         {/* Left: results table */}
         <div>
           <h2 className="font-semibold mb-2 text-sm text-gray-600 uppercase tracking-wide">Results</h2>
@@ -177,11 +188,11 @@ export default function RunDetail() {
                 onClick={() => setSelected(r)}
               >
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    {statusBadge(r.status)}
-                    <span className="text-xs text-gray-400 truncate flex-1">{r.path}</span>
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 flex-shrink-0">{statusBadge(r.status)}</span>
+                    <span className="text-xs text-gray-500 break-words flex-1">{r.path}</span>
                   </div>
-                  <div className="text-sm mt-0.5 truncate">{r.expected}</div>
+                  <div className="text-sm mt-1 break-words">{r.expected}</div>
                 </div>
                 <button
                   title={r.is_starred ? '取消参考标记' : '标记为参考案例'}
@@ -337,6 +348,19 @@ export default function RunDetail() {
             </div>
           )}
         </div>
+        </div>
+        <aside className="w-[330px] shrink-0 lg:sticky lg:top-6">
+          {isRunning ? (
+            <LivePanel device={runDevice} />
+          ) : (
+            <ScreenshotReplay
+              steps={steps}
+              finalShot={selected?.screenshot_b64}
+              hasSelection={!!selected}
+              videoUrl={run?.has_recording ? `/api/runs/${run.id}/recording.mp4` : undefined}
+            />
+          )}
+        </aside>
       </div>
     </div>
   )

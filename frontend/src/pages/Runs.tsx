@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchRuns, startRun, Run } from '../lib/api'
+import { fetchRuns, startRun, deleteRun, Run } from '../lib/api'
 
 const STATUS_COLOR: Record<string, string> = {
   pending:   'bg-yellow-50 text-yellow-600',
@@ -38,6 +38,14 @@ function RunRow({ run }: { run: Run }) {
     },
   })
 
+  const delMut = useMutation({
+    mutationFn: () => deleteRun(run.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['runs'] })
+      queryClient.invalidateQueries({ queryKey: ['trends', run.suite_id] })
+    },
+  })
+
   return (
     <div className="border-b last:border-b-0">
       <div
@@ -63,6 +71,14 @@ function RunRow({ run }: { run: Run }) {
               {rerunMut.isPending ? '…' : '↩ Re-run'}
             </button>
           )}
+          <button
+            className="px-2 py-0.5 text-xs border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-50"
+            disabled={delMut.isPending}
+            onClick={(e) => { e.stopPropagation(); if (confirm('删除整次运行记录？该次运行的所有用例结果和派生记忆都会一并删除。')) delMut.mutate() }}
+            title="删除整次运行（含其用例结果 + 派生记忆）"
+          >
+            {delMut.isPending ? '…' : '🗑'}
+          </button>
         </div>
         <div className="flex gap-3 mt-1 text-xs">
           <span className="text-ok">{run.passed} pass</span>

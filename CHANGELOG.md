@@ -4,6 +4,107 @@ All notable changes to Smart-AI-Bot are documented here.
 
 ---
 
+## v1.1.2
+
+**English**
+
+### Added
+- **Memory hygiene** — cross-run memory (the agent's reference paths + learned
+  lessons) is all derived from run records, so records are now curatable:
+  - Each case has a **run-history panel** (the "记录" toggle) listing every past
+    result with status, date, model, steps and tokens.
+  - Delete a single result, **clear all**, or **delete only failed** for a case.
+  - A per-suite **run-history list** under the trend chart; delete a whole run.
+  - Every delete cascades to the result's step logs **and the lessons distilled
+    from it**, so discarded experience stops priming the next run.
+- **Add a sibling check (子用例) to a scenario** — a folder/scenario row (and the
+  collapsed root breadcrumb) gains a **+ 子用例** action. Keep the path and just
+  fill Expected to add another verification under the same scenario; append
+  `> 子场景` to create a deeper level.
+- **Pass-rate trend redesign** — gradient area chart with gridlines, a highlighted
+  latest value, and per-point hover details.
+
+### Fixed
+- **Lessons were silently disabled** — the `lessons_learned` table predated its
+  `suite_id` / `task_keyword` columns and the auto-migration didn't add them, so
+  every lesson load/save threw and was swallowed. Cross-run lessons now actually
+  persist and load.
+- **Couldn't add a sub-case to a single-case scenario** — the add form forced a
+  deeper node and blocked same-path siblings; both are fixed.
+
+**简体中文**
+
+### 新增
+- **记忆治理** —— 跨运行记忆(参考路径 + 经验教训)全部来自运行记录,现在记录可人工干预:
+  - 每条用例的「记录」面板:列出历次结果(状态/时间/模型/步数/token)。
+  - 删单条、**清空**、或**只删失败**。
+  - 趋势图下方新增本套件的**运行历史列表**,可删除整次运行。
+  - 删除会**级联清理** step logs **和由它提炼的经验**,丢弃的经验不再影响下次运行。
+- **给场景加同级子用例** —— 文件夹/场景行(及折叠后的根面包屑)新增 **+ 子用例**:
+  不改路径只填预期 = 加同级验证;末尾加 `> 子场景` = 建子层级。
+- **通过率趋势重做** —— 渐变面积图、网格、最新值高亮、逐点悬停详情。
+
+### 修复
+- **经验记忆此前一直失效** —— `lessons_learned` 表缺少后加的 `suite_id` / `task_keyword`
+  两列且自动迁移漏了它,导致每次读写都报错被吞掉。现在跨运行经验真正生效。
+- **单用例场景无法加子用例** —— 旧表单强制下沉、且挡住同路径同级;均已修复。
+
+---
+
+## v1.1.1
+
+**English**
+
+### Added
+- **Live device screen** — the Devices page (and a run page while running) shows the
+  device screen live. ADB-attached devices stream hardware-encoded H.264 decoded
+  frame-by-frame via WebCodecs (scrcpy-style, low latency); over plain http it falls
+  back to MSE, and remote devices fall back to ~1 fps screenshot polling. A per-device
+  selector toggles 自动 / 截图 / 关.
+- **Run screen recording & replay** — runs on a local ADB device are recorded to mp4
+  (on-device `screenrecord`, correct timestamps → real-time playback). After a run ends
+  the right rail shows the recording; any device also gets a per-step screenshot replay
+  timeline. The HTML report's step replay gained an auto-play button.
+- **Background app launch** — overlay (SYSTEM_ALERT_WINDOW) permission + a brief overlay
+  window exempt the Portal from Android 10+ background-activity-launch limits, so
+  `start_app` works reliably when the app isn't foregrounded.
+
+### Changed
+- **Web UI layout** — top nav replaced with a left sidebar and a wide-screen content
+  area; the run page is a 3-region layout (results · steps/logs · live/replay) and case
+  rows no longer truncate.
+
+### Fixed
+- **Live-view stutter / drift** — the MSE path stuttered every 1.5s and drifted behind
+  real time; the WebCodecs canvas path renders frame-in/frame-out with no playback buffer.
+- **Recording played slow** — switched from a raw timestamp-less H.264 stream to on-device
+  mp4 so playback runs at real time.
+
+---
+
+**简体中文**
+
+### 新增
+- **设备实时画面** —— 设备页（及运行中的运行页）实时显示设备屏幕。本地 ADB 设备走硬件编码
+  H.264，用 WebCodecs 逐帧解码上屏（scrcpy 同款、低延迟）；纯 http 回落 MSE，远程设备回落
+  ~1fps 截图轮询。每台设备可选 自动 / 截图 / 关。
+- **运行录屏与回放** —— 本地 ADB 设备的运行会录成 mp4（设备端 `screenrecord`，时间戳正确→
+  实时回放）。运行结束后右栏显示录像；任意设备另有逐步截图回放时间轴。HTML 报告的步骤回放
+  新增自动播放。
+- **后台启动 App** —— 悬浮窗（SYSTEM_ALERT_WINDOW）权限 + 短暂悬浮窗，让 Portal 豁免
+  Android 10+ 后台 Activity 启动限制，App 不在前台时 `start_app` 也能可靠拉起。
+
+### 变更
+- **Web UI 布局** —— 顶部导航改为左侧边栏 + 宽屏内容区；运行页改为三栏（结果 · 步骤/日志 ·
+  实时/回放），用例行不再截断。
+
+### 修复
+- **实时画面卡顿/漂移** —— MSE 路径每 1.5s 顿一下且越播越慢；WebCodecs canvas 路径逐帧渲染、
+  零播放缓冲。
+- **录屏回放偏慢** —— 从无时间戳的裸 H.264 改为设备端 mp4，回放按真实速度。
+
+---
+
 ## v1.1.0
 
 **English**

@@ -166,13 +166,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateBackgroundCard() {
         val unrestricted = KeepAliveSetup.isBatteryUnrestricted(this)
-        // Green when battery is unrestricted; orange otherwise (autostart can't be
-        // detected programmatically, so we only assert the battery part).
-        setDotColor(binding.dotBackground, unrestricted, warn = !unrestricted)
-        binding.textBackgroundStatus.text =
-            if (unrestricted) "电池已豁免 ✓ — 仍建议确认自启动已开"
-            else "未豁免 — 点「一键设置」防止后台被冻结"
-        binding.btnBackgroundSetup.text = if (unrestricted) "再设置" else "一键设置"
+        val overlay = KeepAliveSetup.canDrawOverlays(this)
+        // Green only when BOTH battery is unrestricted and the overlay (BAL)
+        // permission is granted; orange when something still needs the user.
+        val ok = unrestricted && overlay
+        setDotColor(binding.dotBackground, ok, warn = !ok)
+        binding.textBackgroundStatus.text = when {
+            ok -> "电池已豁免 ✓ 后台启动已授权 ✓ — 仍建议确认自启动已开"
+            !overlay -> "缺「悬浮窗/后台弹出界面」权限 — 否则后台无法启动 App，点「一键设置」"
+            else -> "未豁免 — 点「一键设置」防止后台被冻结"
+        }
+        binding.btnBackgroundSetup.text = if (ok) "再设置" else "一键设置"
     }
 
     private fun openBackgroundSetup() {
@@ -180,7 +184,18 @@ class MainActivity : AppCompatActivity() {
         if (!KeepAliveSetup.isBatteryUnrestricted(this)) {
             KeepAliveSetup.requestBatteryExemption(this)
         }
-        // Step 2: jump into the OEM auto-start / background-management page.
+        // Step 2: grant the overlay permission — the portable BAL exemption that
+        // lets the backgrounded app launch other apps via start_app.
+        if (!KeepAliveSetup.canDrawOverlays(this)) {
+            KeepAliveSetup.requestOverlayPermission(this)
+            Toast.makeText(
+                this,
+                "请允许「显示悬浮窗 / 在其他应用上层显示」——这是后台启动 App 的关键",
+                Toast.LENGTH_LONG,
+            ).show()
+            return  // let the user finish this grant before jumping further
+        }
+        // Step 3: jump into the OEM auto-start / background-management page.
         val ok = KeepAliveSetup.openAutostartSettings(this)
         Toast.makeText(
             this,

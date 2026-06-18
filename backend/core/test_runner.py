@@ -24,6 +24,7 @@ from core.run_memory import (
     load_reference_examples,
     task_keyword_for,
 )
+from core.run_recorder import RunRecorder
 from core.test_agent import CaseResult, TestCaseAgent
 from core.test_parser import Step, TestCaseData
 from db.database import AsyncSessionLocal
@@ -127,6 +128,7 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
         await state.emit(msg)
 
     passed = failed = errored = skipped = 0
+    recorder = RunRecorder(run_id)
     try:
         async with AsyncSessionLocal() as session:
             run_row = await session.get(TestRun, run_id)
@@ -158,6 +160,8 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
         await emit(f"Batch: {len(ordered)} checks on one session · base = {base_path} · model = {provider}/{model}")
         if len(ordered) > len(safe):
             await emit(f"  ⚠ {len(ordered) - len(safe)} destructive check(s) deferred to the end")
+        if await recorder.start():
+            await emit("Screen recording started (ADB)")
 
         async def log_cb(m: str) -> None:
             await emit(m)
@@ -277,6 +281,7 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
                 .values(status="cancelled", finished_at=datetime.utcnow()))
             await session.commit()
     finally:
+        await recorder.stop()
         await state.finish()
         active_runs.pop(run_id, None)
 
@@ -315,6 +320,7 @@ async def execute_run(
         logger.info("[run:%s] %s", run_id, msg)
         await state.emit(msg)
 
+    recorder = RunRecorder(run_id)
     try:
         async with AsyncSessionLocal() as session:
             run_row = await session.get(TestRun, run_id)
@@ -367,6 +373,8 @@ async def execute_run(
             await session.commit()
 
         await emit(f"Run started: {len(cases)} test cases, device={device_id}, model={provider}/{model}")
+        if await recorder.start():
+            await emit("Screen recording started (ADB)")
 
         passed = failed = errored = skipped = 0
 
@@ -626,6 +634,7 @@ async def execute_run(
             await session.commit()
 
     finally:
+        await recorder.stop()
         await state.finish()
         active_runs.pop(run_id, None)
 

@@ -4,15 +4,16 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.report import generate_html_report
+from core.run_recorder import has_recording, recording_path
 from core.test_runner import active_runs, cancel_run, run_log_stream, start_run, start_batch_run
 from db.database import AsyncSessionLocal
-from db.models import TestCase, TestResult, TestRun, TestStepLog, TestSuite
+from db.models import LessonLearned, TestCase, TestResult, TestRun, TestStepLog, TestSuite
 from ws.portal_ws import connected_devices
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
@@ -75,6 +76,7 @@ class RunOut(BaseModel):
     skipped: int = 0
     total: int = 0
     total_tokens: int = 0
+    has_recording: bool = False
 
 
 class ResultOut(BaseModel):
@@ -137,6 +139,7 @@ async def _run_out(run: TestRun, db: AsyncSession) -> RunOut:
         skipped=counts.get("skip", 0),
         total=len(results),
         total_tokens=total_tokens,
+        has_recording=has_recording(run.id),
     )
 
 
@@ -356,6 +359,37 @@ async def get_run(run_id: str, db: AsyncSession = Depends(get_db)):
     return await _run_out(run, db)
 
 
+@router.delete("/{run_id}", status_code=204)
+async def delete_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete an entire run record and everything derived from it: its per-case
+    results, their step logs, and the lessons distilled from this run (so the
+    agent's memory is cleaned too). Active runs are cancelled first."""
+    run = await db.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    # Stop the live task if this run is still in flight.
+    if run_id in active_runs:
+        state = active_runs.get(run_id)
+        await cancel_run(run_id)
+        if state is not None:
+            await state.finish()
+        active_runs.pop(run_id, None)
+
+    result_ids = [
+        r for (r,) in (
+            await db.execute(select(TestResult.id).where(TestResult.run_id == run_id))
+        ).all()
+    ]
+    # Lessons distilled from this run (keyed by source_run_id).
+    await db.execute(delete(LessonLearned).where(LessonLearned.source_run_id == run_id))
+    if result_ids:
+        await db.execute(delete(TestStepLog).where(TestStepLog.result_id.in_(result_ids)))
+    await db.execute(delete(TestResult).where(TestResult.run_id == run_id))
+    await db.execute(delete(TestRun).where(TestRun.id == run_id))
+    await db.commit()
+
+
 @router.post("/{run_id}/cancel")
 async def cancel_run_endpoint(run_id: str, db: AsyncSession = Depends(get_db)):
     """Cancel an active run. Always marks the DB as cancelled, even if the
@@ -415,6 +449,14 @@ async def stream_logs(run_id: str):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get("/{run_id}/recording.mp4")
+async def get_recording(run_id: str):
+    """Serve the ADB screen recording for a finished run (404 if none)."""
+    if not has_recording(run_id):
+        raise HTTPException(status_code=404, detail="No recording for this run")
+    return FileResponse(str(recording_path(run_id)), media_type="video/mp4")
 
 
 @router.get("/{run_id}/report", response_class=HTMLResponse)

@@ -6,6 +6,7 @@ import androidx.core.content.FileProvider
 import com.dream.smart_androidbot.core.StateRepository
 import com.dream.smart_androidbot.input.AgentKeyboardIME
 import com.dream.smart_androidbot.service.AgentAccessibilityService
+import com.dream.smart_androidbot.service.BackgroundLaunchBridge
 import com.dream.smart_androidbot.service.GestureController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -52,14 +53,18 @@ class ApiHandler(private val context: android.content.Context) {
     // ── Apps ──────────────────────────────────────────────────────────────────
 
     fun launchApp(packageName: String, activity: String = ""): ApiResponse {
-        // Launch from the AccessibilityService context — accessibility services are
-        // exempt from Android 10+ background-activity-launch (BAL) restrictions, so
-        // the target app reliably comes to the foreground. Launching from the plain
-        // app context (we run in the background) gets silently blocked: startActivity
-        // doesn't throw but the foreground transition never happens.
+        // Launch from the AccessibilityService context when available. Contrary
+        // to a common belief, an a11y service Context is NOT itself exempt from
+        // Android 10+ background-activity-launch (BAL): eligibility depends on
+        // the app's state, not which Context starts the activity. When the
+        // Portal app is fully backgrounded, startActivity is silently dropped.
+        // BackgroundLaunchBridge wraps the call in a transient overlay window so
+        // the launch satisfies the BAL check (see that class). Requires the
+        // overlay permission to be granted.
         val launcher: android.content.Context =
             AgentAccessibilityService.getInstance() ?: context
         val pm = launcher.packageManager
+        val hasOverlay = BackgroundLaunchBridge.canDrawOverlays(launcher)
         return try {
             val intent = if (activity.isNotEmpty()) {
                 Intent().apply {
@@ -75,8 +80,8 @@ class ApiHandler(private val context: android.content.Context) {
                 }
             }
             if (intent != null) {
-                launcher.startActivity(intent)
-                return ApiResponse.Success("Launched $packageName")
+                BackgroundLaunchBridge.withLaunchWindow(launcher) { launcher.startActivity(intent) }
+                return ApiResponse.Success(launchedMsg(packageName, hasOverlay))
             }
             // Fallback: resolve the main launcher activity by package.
             val fallback = Intent(Intent.ACTION_MAIN).apply {
@@ -85,8 +90,8 @@ class ApiHandler(private val context: android.content.Context) {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             if (fallback.resolveActivity(pm) != null) {
-                launcher.startActivity(fallback)
-                ApiResponse.Success("Launched $packageName")
+                BackgroundLaunchBridge.withLaunchWindow(launcher) { launcher.startActivity(fallback) }
+                ApiResponse.Success(launchedMsg(packageName, hasOverlay))
             } else {
                 ApiResponse.Error("Could not create intent for $packageName")
             }
@@ -94,6 +99,13 @@ class ApiHandler(private val context: android.content.Context) {
             ApiResponse.Error("Launch failed: ${e.message}")
         }
     }
+
+    /** Note in the success message when the overlay permission is missing, since
+     *  a backgrounded launch will silently no-op without it. */
+    private fun launchedMsg(packageName: String, hasOverlay: Boolean): String =
+        if (hasOverlay) "Launched $packageName"
+        else "Launched $packageName (warning: overlay permission not granted — " +
+             "launch may be blocked while the Portal app is in the background)"
 
     fun stopApp(packageName: String): ApiResponse {
         return try {
