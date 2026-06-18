@@ -8,7 +8,7 @@
 
 ## Demo
 
-<video src="https://github.com/rejigtian/Smart-AI-Bot/raw/main/assets/demo-run-live.mp4" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/f5869888-be0e-4166-9d7a-806d05afe24d" controls width="100%"></video>
 
 A test run in progress (2× speed) — the **wide-screen run page**: case results on the left, the live agent log (thoughts + JSON-RPC calls like `tap_element` / `screenshot`) in the middle, and the device screen mirrored **live** on the right (hardware H.264 decoded frame-by-frame via WebCodecs) — all updating as the AI agent drives the device end-to-end from a single plain-language test case.
 
@@ -69,12 +69,12 @@ Full comparison and roadmap: [Comparison](docs/comparison.md) · [Roadmap](docs/
 
 <table>
 <tr>
-<td width="50%"><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/portal-app.png" alt="Portal App on Android" /></td>
-<td width="50%"><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/quick-task.png" alt="Quick Task in Web UI" /></td>
+<td width="50%"><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/devices-live.png" alt="Devices page with live device screen" /></td>
+<td width="50%"><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/run-page.png" alt="Run page with recording replay" /></td>
 </tr>
 <tr>
-<td><b>Portal App</b> — pair the device by setting WebSocket URL + Token, enable Accessibility, and tap Connect</td>
-<td><b>Quick Task</b> — describe a task in plain language, pick a device + LLM model, hit Run</td>
+<td><b>Devices &amp; live screen</b> — pair by QR or token, then watch the device mirrored <b>live</b> (ADB H.264 decoded via WebCodecs)</td>
+<td><b>Run page</b> — case results, the live agent log, and the device screen / recording replay alongside the run</td>
 </tr>
 <tr>
 <td><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/test-report.png" alt="Test Report" /></td>
@@ -87,6 +87,8 @@ Full comparison and roadmap: [Comparison](docs/comparison.md) · [Roadmap](docs/
 </table>
 
 The exported HTML report is fully self-contained, and its step replay can **auto-play** (2× speed):
+
+<video src="https://github.com/user-attachments/assets/f8a09287-e6b2-4f3a-ab86-a22a77a42e45" controls width="100%"></video>
 
 <p><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/demo-report-replay.gif" alt="HTML report step replay" width="70%" /></p>
 

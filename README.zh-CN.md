@@ -8,29 +8,13 @@
 
 ## 演示视频
 
-<video src="https://github.com/user-attachments/assets/9812bbb6-7759-47f5-b09a-fab09053552b" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/f5869888-be0e-4166-9d7a-806d05afe24d" controls width="100%"></video>
 
-视频里同时录制了三栏画面，演示同一条测试用例的执行：
+一次测试运行进行中（2 倍速）—— **宽屏运行页**：左侧用例结果、中间实时 agent 日志（思考过程 + `tap_element` / `screenshot` 等 JSON-RPC 调用）、右侧**实时**镜像的设备屏幕（硬件 H.264，WebCodecs 逐帧解码），全部随 AI agent 端到端操作设备实时更新——只需一条自然语言用例。
 
-- **左侧 — 相机实录**：物理证据。手机放在支架上、画面里没有手；开了系统"显示点按操作"，AI 每次点击都会在屏幕上出现一个白圈。
-- **中间 — 后端日志 + Web UI 测试报告**：上方是 `uvicorn` 实时输出（Agent 思考过程、JSON-RPC 调用 `tap_element` / `screenshot`、Verifier 判定），下方是测试管理页面（步骤回放 + 每步思考 + Pass/Fail 判定）。
-- **右侧 — 手机录屏**：Agent 看到的真实手机界面。
+<p><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/demo-run-live.gif" alt="运行页与设备实时画面" width="70%" /></p>
 
-全程未经剪辑，展示的就是 Agent 根据一条自然语言测试用例，端到端操作设备的完整过程。
-
-> **演示中没有 USB 连接。** 手机和电脑只通过 WiFi 通信（Portal App 反向 WebSocket），甚至不要求同一个网段。设备能跑在任意网络上 — 4G / 5G / 公司 WiFi 都行。
-
-> **如果视频没显示**：[直接下载](https://github.com/rejigtian/Smart-AI-Bot/releases/download/v1.0.0/example.mp4)（15 MB），或访问 [Releases 页](https://github.com/rejigtian/Smart-AI-Bot/releases)。
-
-### v1.1 新增 —— 宽屏 UI + 设备实时画面
-
-<p><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/demo-run-live.gif" alt="运行页与设备实时画面" width="100%" /></p>
-
-*运行页（2 倍速）：左侧边栏 + 用例结果 + 实时 agent 日志 + 跑用例时**实时**镜像的设备屏幕（硬件 H.264，WebCodecs 逐帧解码）。*
-
-<p><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/demo-report-replay.gif" alt="HTML 报告步骤回放" width="100%" /></p>
-
-*自包含 HTML 报告（2 倍速），步骤回放可自动播放。*
+> **无需 USB、任意网络。** 手机通过 Portal App 反向 WebSocket 连服务器，手机和电脑甚至不用同一网段，设备可在任意网络上跑（4G / 5G / 公司 WiFi）。
 
 ---
 
@@ -87,12 +71,12 @@ Smart-AI-Bot 是一个面向 Android 应用 QA 团队（或希望自动化操作
 
 <table>
 <tr>
-<td width="50%"><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/portal-app.png" alt="Portal App" /></td>
-<td width="50%"><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/quick-task.png" alt="快速任务" /></td>
+<td width="50%"><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/devices-live.png" alt="设备页与实时画面" /></td>
+<td width="50%"><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/run-page.png" alt="运行页与录屏回放" /></td>
 </tr>
 <tr>
-<td><b>Portal App</b> — 设置 WebSocket URL + Token，启用无障碍服务，点 Connect 即可让设备上线</td>
-<td><b>快速任务</b> — 用自然语言描述要做的事，选设备 + 模型，点 Run</td>
+<td><b>设备与实时画面</b> — 扫码/Token 配对后，<b>实时</b>镜像设备屏幕（本地 ADB H.264，WebCodecs 逐帧解码）</td>
+<td><b>运行页</b> — 用例结果、实时 agent 日志，以及运行旁的设备实时画面 / 录屏回放</td>
 </tr>
 <tr>
 <td><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/test-report.png" alt="测试报告" /></td>
@@ -103,6 +87,12 @@ Smart-AI-Bot 是一个面向 Android 应用 QA 团队（或希望自动化操作
 <td><b>步骤回放</b> — 每一步都有截图、Agent 思考、调用的工具（例如 <code>tap_element({"index": 5})</code>）</td>
 </tr>
 </table>
+
+导出的 HTML 报告完全自包含，步骤回放可**自动播放**（2 倍速）：
+
+<video src="https://github.com/user-attachments/assets/f8a09287-e6b2-4f3a-ab86-a22a77a42e45" controls width="100%"></video>
+
+<p><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/demo-report-replay.gif" alt="HTML 报告步骤回放" width="70%" /></p>
 
 ---
 
