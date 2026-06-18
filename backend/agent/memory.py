@@ -84,6 +84,23 @@ class AgentMemory:
 
     # ── Context window management ─────────────────────────────────────────────
 
+    @staticmethod
+    def _drop_orphan_tool_results(tail: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Drop leading tool-result messages whose owning assistant turn was
+        truncated away.
+
+        Tool results (role="tool") must be immediately preceded by the assistant
+        message that issued the matching tool_calls. When a slice boundary lands
+        between an assistant turn and its results, those results become orphans —
+        the Anthropic/Bedrock API rejects a tool_result block with no matching
+        tool_use. Advance past any leading orphans so the kept window always
+        starts on a clean boundary (a user message or an assistant turn).
+        """
+        i = 0
+        while i < len(tail) and tail[i].get("role") == "tool":
+            i += 1
+        return tail[i:]
+
     def truncate(self) -> None:
         """Keep pinned messages (system + goal + optional reference) plus the
         _MAX_CTX most-recent messages.
@@ -98,6 +115,8 @@ class AgentMemory:
         tail = self.messages[-_MAX_CTX:]
         # Avoid duplicates if tail overlaps with pinned
         tail = [m for m in tail if m not in pinned]
+        # Never start the rolling window on an orphaned tool result.
+        tail = self._drop_orphan_tool_results(tail)
         self.messages = pinned + tail
 
     async def compress(
@@ -178,6 +197,9 @@ class AgentMemory:
             "content": f"[History Summary — earlier steps]\n{self._summary}",
         }
         tail = [m for m in tail if m not in pinned]
+        # The summary is a user message; a leading orphaned tool result would
+        # follow it with no matching tool_use and be rejected by the API.
+        tail = self._drop_orphan_tool_results(tail)
         self.messages = pinned + [summary_msg] + tail
 
     # ── Action history ────────────────────────────────────────────────────────

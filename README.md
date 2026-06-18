@@ -144,27 +144,37 @@ Open http://localhost:5173 and drop your LLM API keys into Settings.
 
 ### Install the Portal App
 
-**Option A — prebuilt APK (fastest)**
+**Option A — scan to install (easiest)**
 
-Download from the [latest release](https://github.com/rejigtian/Smart-AI-Bot/releases/latest) and install:
-
-```bash
-adb install -r ~/Downloads/app-v1.0.0.apk
-```
+With the backend running, open the Web UI's **Devices** page in a phone browser, tap
+**📱 Download App**, and scan the QR to download and install the latest
+`SmartAgent-<version>.apk`. Allow "install from unknown sources" when prompted.
 
 **Option B — build from source**
 
 ```bash
 cd android
-./gradlew assembleDebug
+./gradlew assembleDebug   # also archived as backend/data/apk/SmartAgent-<version>.apk
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-First launch:
+### First launch — pair the device
 
-1. In the app's Settings, set the **Server WebSocket URL** (e.g. `ws://192.168.1.10:8000/v1/providers/join`) and a **Device Token** (generate one in the Web UI's Devices page).
-2. System Settings → Accessibility → enable **AgentAccessibilityService**.
-3. Back in the app, tap **Start Connection**. The persistent foreground notification means you're online.
+**Easiest — scan to connect.** In the Devices page, generate a token and tap **Show QR**.
+In the Portal app tap **扫码连接 (Scan QR)** and scan it — the server URL + token are
+filled in and it connects in one tap.
+
+**Manual.** Set the **Server WebSocket URL** and **Device Token** by hand, then tap
+**Connect**.
+
+Finally: System Settings → Accessibility → enable **AgentAccessibilityService**. The
+persistent foreground notification means you're online.
+
+> **Which address?** A real phone **can't reach `localhost`** — that only works for an
+> emulator running on the same computer. On the **same LAN**, open the Web UI by the
+> machine's **internal IP** (e.g. `http://192.168.1.10:5173`); the QR and pairing address
+> then default to that internal address automatically. To use a **public address or
+> domain**, configure it manually — see [Deployment](docs/deployment.md).
 
 ### Write a test case
 
@@ -221,6 +231,7 @@ Detailed design: [`docs/agent-architecture.md`](docs/agent-architecture.md).
 | [Roadmap](docs/roadmap.md) | Done features + priorities |
 | [Comparison](docs/comparison.md) | DroidRun / Midscene / AutoGLM technical comparison |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues — connection / screenshot / recognition |
+| [Changelog](CHANGELOG.md) | Release history — what changed in each version |
 
 ---
 

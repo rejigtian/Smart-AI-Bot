@@ -116,6 +116,12 @@ export interface AppInfo {
 
 export const fetchAppInfo = () => api.get<AppInfo>('/app/latest').then(r => r.data)
 
+export interface ServerInfo {
+  lan_ip: string
+}
+
+export const fetchServerInfo = () => api.get<ServerInfo>('/server/info').then(r => r.data)
+
 // ── Suites ───────────────────────────────────────────────────────────────────
 
 export const fetchSuites = () => api.get<Suite[]>('/suites').then(r => r.data)

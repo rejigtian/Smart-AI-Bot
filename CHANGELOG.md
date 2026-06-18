@@ -4,6 +4,55 @@ All notable changes to Smart-AI-Bot are documented here.
 
 ---
 
+## v1.1.0
+
+**English**
+
+### Added
+- **QR pairing** — the web Devices page shows a per-device QR; the Portal app's new
+  **Scan QR** button reads the server URL + token and connects in one tap, no
+  copy-paste. The QR encodes whatever host you browse with, so LAN/IP access just
+  works without a public deployment.
+- **QR app download** — a **Download App** QR on the web page; scan it with a phone
+  browser to download and install the latest APK directly (served by the backend at
+  `/api/app/download`).
+- **Native app UI redesign** — the Portal app now matches the web frontend's
+  cyan-terminal design system (electric-cyan accent, monospace labels, hairline
+  cards on a cool canvas) and ships a consistent app icon.
+
+### Fixed
+- **Copy Token over plain HTTP** — clipboard now falls back to a legacy path on
+  non-secure (`http://<ip>`) origins, so the button works off HTTPS/localhost.
+- **Connection state** — the app now distinguishes *connecting* from *connected*
+  (previously it never left "connecting").
+- **Keyboard no longer covers the inputs** — the config screen resizes so the
+  focused field stays visible.
+
+### Build
+- The debug APK is archived as `SmartAgent-<version>.apk` after each build and
+  served for QR download.
+- Backend dependencies pinned to exact versions for reproducible builds.
+
+---
+
+**简体中文**
+
+### 新增
+- **扫码连接** —— Web 设备页为每台设备生成二维码；Portal App 新增**扫码连接**按钮，扫一下即读取服务器地址 + token 并自动连接，免复制粘贴。二维码编码的就是你访问网页用的地址，所以局域网/IP 访问开箱即用，无需公网部署。
+- **扫码安装 App** —— Web 页新增**安装 App** 二维码；用手机浏览器扫码即可直接下载并安装最新 APK（后端 `/api/app/download` 提供）。
+- **原生 App UI 换肤** —— Portal App 改为与 Web 前端一致的「电青终端」设计体系（电青主色、等宽标签、cool 背景上的 hairline 卡片），并配套一致的应用图标。
+
+### 修复
+- **明文 HTTP 下复制 Token** —— 剪贴板在非安全上下文（`http://<ip>`）自动降级到旧写法，不在 HTTPS/localhost 也能复制。
+- **连接状态** —— App 区分「连接中」与「已连接」（此前一直停在"连接中"）。
+- **键盘不再遮挡输入框** —— 配置页随键盘自动收缩，聚焦的输入框始终可见。
+
+### 构建
+- 每次打包后 APK 归档为 `SmartAgent-<版本号>.apk` 并用于扫码下载。
+- 后端依赖锁定为精确版本，保证可复现构建。
+
+---
+
 ## v1.0.2
 
 **English**

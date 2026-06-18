@@ -146,26 +146,27 @@ npm run dev
 
 ### 安装 Portal App
 
-**方式 A — 直接下载预编译 APK（最快）**
+**方式 A — 扫码安装（最简单）**
 
-从 [最新 release](https://github.com/rejigtian/Smart-AI-Bot/releases/latest) 下载后：
-
-```bash
-adb install -r ~/Downloads/app-v1.0.0.apk
-```
+后端跑起来后，用**手机浏览器**打开 Web UI 的**设备页**，点 **📱 安装 App**，扫码即可下载安装最新的 `SmartAgent-<版本号>.apk`。安装时允许「未知来源」。
 
 **方式 B — 从源码构建**
 
 ```bash
 cd android
-./gradlew assembleDebug
+./gradlew assembleDebug   # 同时归档为 backend/data/apk/SmartAgent-<版本号>.apk
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-首次启动 App：
-1. 设置页填 **服务器 WS 地址**（例如 `ws://192.168.1.10:8000/v1/providers/join`）和 **设备 Token**（在 Web UI 设备页生成）
-2. 系统设置 → 无障碍服务 → 启用 **AgentAccessibilityService**
-3. 回到 App 点"启动连接"，前台服务通知出现即上线
+### 首次启动 —— 配对设备
+
+**最简单：扫码连接。** 在设备页生成 Token，点 **Show QR**；Portal App 点 **扫码连接 (Scan QR)** 扫一下，服务器地址 + Token 自动填好并一键连接。
+
+**手动：** 自行填 **服务器 WS 地址** 和 **设备 Token**，点 **Connect**。
+
+最后：系统设置 → 无障碍服务 → 启用 **AgentAccessibilityService**，前台服务通知出现即上线。
+
+> **用哪个地址？** 真机**访问不到 `localhost`** —— 那只对电脑上的模拟器有效。**同一局域网**下，用本机**内网 IP** 打开 Web UI（如 `http://192.168.1.10:5173`），二维码和配对地址会自动用这个内网地址。要用**公网地址或域名**则需手动配置 —— 见 [部署文档](docs/deployment.zh-CN.md)。
 
 ### 写一个测试用例
 
@@ -222,6 +223,7 @@ Android 设备 (Portal App)
 | [Roadmap](docs/roadmap.md) | 已完成功能清单 + 待办优先级 |
 | [竞品对比](docs/comparison.zh-CN.md) | DroidRun / Midscene / AutoGLM 技术路线对比 |
 | [故障排查](docs/troubleshooting.zh-CN.md) | 常见问题（连接、截图、识别）排查清单 |
+| [更新日志](CHANGELOG.md) | 版本发布历史 —— 每个版本改了什么 |
 
 ---
 

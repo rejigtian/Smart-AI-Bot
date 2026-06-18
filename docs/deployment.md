@@ -33,6 +33,24 @@ USB.
 
 ---
 
+## Addressing — which URL the device gets
+
+The Devices page builds the **QR pairing code** and the **APK-download code** from the
+address you open the Web UI with:
+
+| You open the Web UI at | QR / pairing address becomes |
+|------------------------|------------------------------|
+| `http://localhost:5173` (operator's own machine) | the backend-reported **LAN IP** — `localhost` is auto-substituted, since a real phone can't reach it |
+| `http://<LAN-IP>:5173` (same network) | that **LAN IP** — scan it from any phone on the LAN |
+| `https://bot.example.com` (public) | `wss://bot.example.com/...` — works from any network |
+
+So **switching to a public address or domain just means opening the Web UI through that
+domain** (Scenario 2) — there's no separate server-address field to edit in the app; the
+QR and the on-page hint follow whatever URL you browse with. A real phone can never use
+`localhost` — that only works for an emulator running on the operator's own machine.
+
+---
+
 ## Scenario 1 — Local / LAN (development & in-team trial)
 
 The fastest path. Server and devices share a WiFi network.

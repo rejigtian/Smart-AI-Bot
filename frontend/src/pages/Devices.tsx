@@ -1,14 +1,34 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { fetchDevices, createDevice, deleteDevice, fetchAppInfo, Device } from '../lib/api'
+import {
+  fetchDevices, createDevice, deleteDevice, fetchAppInfo, fetchServerInfo, Device,
+} from '../lib/api'
 
-// Build the pairing payload the Portal app scans. The WS endpoint is reachable
-// at the same origin the browser is on, because nginx (prod) and the vite dev
-// server both reverse-proxy /v1 → backend.
-function buildConnectUri(device: Device): { uri: string; wsUrl: string } {
+// A phone can't reach the server via localhost. So when the page is opened on
+// localhost we swap in the backend-reported LAN IP (keeping the browsed port,
+// which nginx/vite proxy /v1 and /api through). When opened via a real IP or a
+// public domain, location.host is already reachable, so we keep it as-is.
+function reachableHost(lanIp?: string): string {
+  const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+  if (isLocal && lanIp) {
+    return location.port ? `${lanIp}:${location.port}` : lanIp
+  }
+  return location.host
+}
+
+function wsJoinUrl(lanIp?: string): string {
   const proto = location.protocol === 'https:' ? 'wss://' : 'ws://'
-  const wsUrl = `${proto}${location.host}/v1/providers/join`
+  return `${proto}${reachableHost(lanIp)}/v1/providers/join`
+}
+
+function httpBase(lanIp?: string): string {
+  return `${location.protocol}//${reachableHost(lanIp)}`
+}
+
+// Build the pairing payload the Portal app scans.
+function buildConnectUri(device: Device, lanIp?: string): { uri: string; wsUrl: string } {
+  const wsUrl = wsJoinUrl(lanIp)
   const params = new URLSearchParams({ url: wsUrl, token: device.token, name: device.name })
   return { uri: `smartbot://connect?${params.toString()}`, wsUrl }
 }
@@ -27,7 +47,9 @@ export default function Devices() {
   })
 
   const { data: appInfo } = useQuery({ queryKey: ['app-info'], queryFn: fetchAppInfo })
-  const downloadUrl = `${location.origin}/api/app/download`
+  const { data: serverInfo } = useQuery({ queryKey: ['server-info'], queryFn: fetchServerInfo })
+  const lanIp = serverInfo?.lan_ip
+  const downloadUrl = `${httpBase(lanIp)}/api/app/download`
 
   const createMut = useMutation({
     mutationFn: () => createDevice(newName || 'New Device'),
@@ -161,8 +183,9 @@ export default function Devices() {
         <div className="mt-6 p-4 bg-primary-soft rounded-lg text-sm text-primary-deep">
           <strong>Portal setup:</strong> In the Portal app, tap <strong>扫码连接 (Scan QR)</strong> and point it at a
           device's QR code — or set the server URL to{' '}
-          <code className="bg-primary-soft px-1 rounded">ws://YOUR_SERVER/v1/providers/join</code>{' '}
-          and paste the token manually.
+          <code className="bg-primary-soft px-1 rounded">{wsJoinUrl(lanIp)}</code>{' '}
+          and paste the token manually. Use this LAN address from a phone on the same
+          network; for a public server, configure a domain (see deployment docs).
         </div>
       )}
 
@@ -224,13 +247,13 @@ export default function Devices() {
             <h2 className="text-lg font-bold mb-1">Scan to connect</h2>
             <p className="text-sm text-gray-500 mb-4">{qrDevice.name}</p>
             <div className="flex justify-center mb-4">
-              <QRCodeSVG value={buildConnectUri(qrDevice).uri} size={240} includeMargin />
+              <QRCodeSVG value={buildConnectUri(qrDevice, lanIp).uri} size={240} includeMargin />
             </div>
             <p className="text-xs text-gray-400 mb-1">
               In the Portal app tap <strong>扫码连接 (Scan QR)</strong>
             </p>
             <p className="text-xs text-gray-400 font-mono break-all mb-4">
-              {buildConnectUri(qrDevice).wsUrl}
+              {buildConnectUri(qrDevice, lanIp).wsUrl}
             </p>
             <button
               className="w-full text-sm px-4 py-2 border rounded hover:bg-gray-50"

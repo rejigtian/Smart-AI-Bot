@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 import litellm
 
 from db.database import init_db
-from routers import appdist, devices, recorder, settings, testsuites, testruns
+from routers import appdist, devices, recorder, serverinfo, settings, testsuites, testruns
 from ws.portal_ws import portal_websocket_endpoint
 
 # Drop provider-unsupported params (e.g. vector_store_ids leaking into Anthropic)
@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="smart-ai-bot", version="1.0.2", lifespan=lifespan)
+app = FastAPI(title="smart-ai-bot", version="1.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,6 +46,7 @@ app.include_router(testruns.router)
 app.include_router(recorder.router)
 app.include_router(settings.router)
 app.include_router(appdist.router)
+app.include_router(serverinfo.router)
 
 # Portal reverse WebSocket
 app.add_api_websocket_route("/v1/providers/join", portal_websocket_endpoint)

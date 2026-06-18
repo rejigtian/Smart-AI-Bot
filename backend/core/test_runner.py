@@ -18,6 +18,12 @@ from typing import AsyncGenerator, List, Optional
 from sqlalchemy import select, update
 
 from agent.ws_device import WebSocketDevice
+from core.run_memory import (
+    extract_lessons,
+    load_lessons,
+    load_reference_examples,
+    task_keyword_for,
+)
 from core.test_agent import CaseResult, TestCaseAgent
 from core.test_parser import Step, TestCaseData
 from db.database import AsyncSessionLocal
@@ -187,6 +193,16 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
             prev_path = case_row.path
             case_data = TestCaseData(path=goal, expected=case_row.expected)
 
+            # Cross-run memory: a soft reference from this case's best prior run
+            # (starred, else last pass) + lessons distilled from past mistakes.
+            task_kw = task_keyword_for(case_row.path)
+            reference_examples, ref_msg = await load_reference_examples(cid)
+            if ref_msg:
+                await emit(ref_msg)
+            lessons = await load_lessons(cid, case_row.suite_id, task_kw)
+            if lessons:
+                await emit(f"  📖 Loaded {len(lessons)} lessons from past runs")
+
             # Fresh agent (fresh memory) per check; the device keeps its state between checks.
             # Single-agent (no subgoal decomposition): each leaf is a small,
             # mostly-on-one-page check, so over-decomposing wastes steps + re-navigates.
@@ -196,6 +212,8 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
                 verifier_provider=v_provider, verifier_model=v_model,
                 verifier_api_key=v_key, verifier_api_base=v_base, fallbacks=fallbacks,
                 allow_subagents=False,
+                reference_examples=reference_examples or None,
+                lessons_learned=lessons or None,
             )
             try:
                 case_result = await agent.run(case_data)
@@ -228,6 +246,16 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
                             subgoal_index=sl.subgoal_index, subgoal_desc=sl.subgoal_desc or "",
                         ))
                     await session.commit()
+
+            # Distil lessons from this leaf for future runs (best-effort).
+            if result_row and case_result.steps >= 3:
+                n_lessons = await extract_lessons(
+                    result_id=result_row.id, run_id=run_id, case_id=cid,
+                    suite_id=case_row.suite_id, task_keyword=task_kw,
+                    provider=provider, model=model, api_key=api_key, api_base=api_base,
+                )
+                if n_lessons:
+                    await emit(f"  📖 Extracted {n_lessons} lesson(s) for future runs")
 
             icon = {"pass": "✅", "fail": "❌", "error": "💥", "skip": "⏭"}.get(case_result.status, "?")
             await emit(f"  {icon} {case_result.status}: {case_result.reason}")
@@ -431,76 +459,16 @@ async def execute_run(
             async def log_cb(msg: str) -> None:
                 await emit(f"  {msg}")
 
-            # Load the most recent starred result for this case as a reference.
-            # Enrich with StepLog thoughts for better few-shot context.
-            reference_examples: list = []
-            async with AsyncSessionLocal() as session:
-                ref_res = await session.execute(
-                    select(TestResult)
-                    .where(TestResult.case_id == case_row.id, TestResult.is_starred == True)
-                    .order_by(TestResult.finished_at.desc())
-                    .limit(1)
-                )
-                ref_row = ref_res.scalar_one_or_none()
-                if ref_row and ref_row.action_history_json:
-                    try:
-                        reference_examples = json.loads(ref_row.action_history_json)
-                        # Enrich with thought from StepLog if available
-                        step_res = await session.execute(
-                            select(TestStepLog)
-                            .where(TestStepLog.result_id == ref_row.id)
-                            .order_by(TestStepLog.step)
-                        )
-                        step_thoughts = {
-                            sl.step: sl.thought
-                            for sl in step_res.scalars().all()
-                            if sl.thought
-                        }
-                        for rec in reference_examples:
-                            thought = step_thoughts.get(rec.get("step", 0), "")
-                            if thought:
-                                rec["thought"] = thought[:200]
-                        # Filter out wasted steps: tap→back/close pairs
-                        filtered = []
-                        skip_next = False
-                        for j, rec in enumerate(reference_examples):
-                            if skip_next:
-                                skip_next = False
-                                continue
-                            fn = rec.get("fn_name", "")
-                            # Check if next step is a recovery (back/close)
-                            if j + 1 < len(reference_examples):
-                                nxt_fn = reference_examples[j + 1].get("fn_name", "")
-                                nxt_thought = step_thoughts.get(reference_examples[j + 1].get("step", 0), "")
-                                recovery_fns = {"press_key", "global_action"}
-                                wrong_kw = ["wrong", "not what", "accidentally", "误", "不是", "关闭", "keyboard"]
-                                if nxt_fn in recovery_fns and any(kw in nxt_thought.lower() for kw in wrong_kw):
-                                    skip_next = True  # skip both current (mistake) and next (recovery)
-                                    continue
-                            filtered.append(rec)
-                        if len(filtered) < len(reference_examples):
-                            await emit(f"  📌 Loaded {len(filtered)}-step reference (filtered {len(reference_examples) - len(filtered)} wasted steps)")
-                        else:
-                            await emit(f"  📌 Loaded {len(filtered)}-step reference from starred run")
-                        reference_examples = filtered
-                    except Exception:
-                        pass
+            # Cross-run memory: a soft reference from this case's best prior run
+            # (starred, else last pass — "success auto-memory") + lessons.
+            reference_examples, ref_msg = await load_reference_examples(case_row.id)
+            if ref_msg:
+                await emit(ref_msg)
 
-            # Load lessons learned from past mistakes
-            # Extract a keyword from the task path for fuzzy matching across quick runs
-            _task_kw = case_row.path.split(">")[0].strip()[:30] if ">" in case_row.path else case_row.path[:30]
-            lessons: list[str] = []
-            try:
-                from core.lesson_extractor import load_lessons_for_case
-                lessons = await load_lessons_for_case(
-                    case_id=case_row.id,
-                    suite_id=case_row.suite_id,
-                    task_keyword=_task_kw,
-                )
-                if lessons:
-                    await emit(f"  📖 Loaded {len(lessons)} lessons from past runs")
-            except Exception:
-                pass
+            _task_kw = task_keyword_for(case_row.path)
+            lessons = await load_lessons(case_row.id, case_row.suite_id, _task_kw)
+            if lessons:
+                await emit(f"  📖 Loaded {len(lessons)} lessons from past runs")
 
             agent = TestCaseAgent(
                 device=device,
@@ -595,23 +563,13 @@ async def execute_run(
 
             # Extract lessons from mistakes (async, best-effort)
             if result_row and case_result.steps >= 3:
-                try:
-                    from core.lesson_extractor import extract_and_store_lessons
-                    n_lessons = await extract_and_store_lessons(
-                        result_id=result_row.id,
-                        run_id=run_id,
-                        case_id=case_row.id,
-                        suite_id=case_row.suite_id,
-                        task_keyword=_task_kw,
-                        provider=provider,
-                        model=model,
-                        api_key=api_key,
-                        api_base=api_base,
-                    )
-                    if n_lessons:
-                        await emit(f"  📖 Extracted {n_lessons} lesson(s) for future runs")
-                except Exception as le_err:
-                    logger.debug("Lesson extraction skipped: %s", le_err)
+                n_lessons = await extract_lessons(
+                    result_id=result_row.id, run_id=run_id, case_id=case_row.id,
+                    suite_id=case_row.suite_id, task_keyword=_task_kw,
+                    provider=provider, model=model, api_key=api_key, api_base=api_base,
+                )
+                if n_lessons:
+                    await emit(f"  📖 Extracted {n_lessons} lesson(s) for future runs")
 
             status_icon = {"pass": "✅", "fail": "❌", "error": "💥", "skip": "⏭"}.get(
                 case_result.status, "?"
