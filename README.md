@@ -8,19 +8,13 @@
 
 ## Demo
 
-<video src="https://github.com/user-attachments/assets/9812bbb6-7759-47f5-b09a-fab09053552b" controls width="100%"></video>
+<video src="https://github.com/rejigtian/Smart-AI-Bot/raw/main/assets/demo-run-live.mp4" controls width="100%"></video>
 
-The demo above shows three panels recorded simultaneously for the same test case:
+A test run in progress (2× speed) — the **wide-screen run page**: case results on the left, the live agent log (thoughts + JSON-RPC calls like `tap_element` / `screenshot`) in the middle, and the device screen mirrored **live** on the right (hardware H.264 decoded frame-by-frame via WebCodecs) — all updating as the AI agent drives the device end-to-end from a single plain-language test case.
 
-- **Left — Phone camera**: physical proof. The device sits on a stand with no hands in frame; "Show Touches" is enabled so every synthetic tap appears as a white dot on the screen.
-- **Middle — Backend log + Web UI report**: live `uvicorn` output (agent thoughts, JSON-RPC calls like `tap_element` / `screenshot`, verifier verdicts) on top, with the test management page (step replay + per-step reasoning + pass/fail verdict) below.
-- **Right — Phone screen mirror**: the actual UI as seen by the AI agent.
+<p><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/demo-run-live.gif" alt="Run page with live device screen" width="70%" /></p>
 
-The whole sequence is unedited — what you see is the agent operating the device end-to-end based on a single plain-language test case.
-
-> **No USB cable in this demo.** The phone talks to the server over WiFi only, via the Portal App's reverse WebSocket — the laptop and the phone don't even need to be on the same network. Run your devices anywhere (4G / 5G / corporate WiFi).
-
-> **Note**: if the video doesn't render in your viewer, [download it directly](https://github.com/rejigtian/Smart-AI-Bot/releases/download/v1.0.0/example.mp4) (15 MB) or browse the [Releases page](https://github.com/rejigtian/Smart-AI-Bot/releases).
+> **No USB cable, any network.** The phone talks to the server over the Portal App's reverse WebSocket — the laptop and the phone don't even need to be on the same network. Run your devices anywhere (4G / 5G / corporate WiFi).
 
 ---
 
@@ -91,6 +85,10 @@ Full comparison and roadmap: [Comparison](docs/comparison.md) · [Roadmap](docs/
 <td><b>Step Replay</b> — every action with screenshot, agent reasoning, and tool call (e.g. <code>tap_element({"index": 5})</code>)</td>
 </tr>
 </table>
+
+The exported HTML report is fully self-contained, and its step replay can **auto-play** (2× speed):
+
+<p><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/demo-report-replay.gif" alt="HTML report step replay" width="70%" /></p>
 
 ---
 

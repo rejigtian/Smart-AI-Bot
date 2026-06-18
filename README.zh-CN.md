@@ -22,6 +22,16 @@
 
 > **如果视频没显示**：[直接下载](https://github.com/rejigtian/Smart-AI-Bot/releases/download/v1.0.0/example.mp4)（15 MB），或访问 [Releases 页](https://github.com/rejigtian/Smart-AI-Bot/releases)。
 
+### v1.1 新增 —— 宽屏 UI + 设备实时画面
+
+<p><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/demo-run-live.gif" alt="运行页与设备实时画面" width="100%" /></p>
+
+*运行页（2 倍速）：左侧边栏 + 用例结果 + 实时 agent 日志 + 跑用例时**实时**镜像的设备屏幕（硬件 H.264，WebCodecs 逐帧解码）。*
+
+<p><img src="https://cdn.jsdelivr.net/gh/rejigtian/Smart-AI-Bot@main/assets/demo-report-replay.gif" alt="HTML 报告步骤回放" width="100%" /></p>
+
+*自包含 HTML 报告（2 倍速），步骤回放可自动播放。*
+
 ---
 
 ## 目录
