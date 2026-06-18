@@ -217,6 +217,43 @@ export default function Devices() {
               and paste the token manually. Use this LAN address from a phone on the same
               network; for a public server, configure a domain (see deployment docs).
             </div>
+
+            <details className="mt-3 px-4 py-3 border rounded-lg text-sm text-gray-600">
+              <summary className="cursor-pointer font-medium text-primary-deep select-none">
+                连不上 / 扫码无法访问？点此排查
+              </summary>
+              <ol className="list-decimal ml-5 mt-3 space-y-2">
+                <li>
+                  <strong>用的是局域网地址吗？</strong> 本页应通过{' '}
+                  <code className="bg-gray-100 px-1 rounded">192.168.*</code> 这类内网 IP 打开（地址栏直接换成该 IP），
+                  且手机和电脑在<strong>同一个路由器 / WiFi</strong> 下。当前发给设备的地址是{' '}
+                  <code className="bg-gray-100 px-1 rounded break-all">{reachableHost(lanIp, backendPort)}</code>。
+                </li>
+                <li>
+                  <strong>VPN / 虚拟网卡会让自动探测选错 IP。</strong> 装了公司 VPN、Radmin、Docker 等时，可能给出{' '}
+                  <code className="bg-gray-100 px-1 rounded">10.*</code> / <code className="bg-gray-100 px-1 rounded">26.*</code>{' '}
+                  这类手机访问不到的地址 —— 改用真实内网 IP 打开本页，或临时断开 VPN。
+                </li>
+                <li>
+                  <strong>防火墙挡了吗？</strong> 用手机浏览器打开{' '}
+                  <a
+                    className="text-primary underline break-all"
+                    href={`${httpBase(lanIp, backendPort)}/api/app/latest`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {`${httpBase(lanIp, backendPort)}/api/app/latest`}
+                  </a>{' '}
+                  —— 能看到 JSON 说明网络通；打不开多半是端口入站被防火墙拦了，需放行前端 / 后端端口。
+                </li>
+                <li>
+                  <strong>安装与权限：</strong> 装 APK 时允许「未知来源」，装好后在系统设置里给它开启<strong>无障碍服务</strong>。
+                </li>
+                <li>
+                  <strong>设备在外网？</strong> 跨网络时需配置域名 + <code className="bg-gray-100 px-1 rounded">wss://</code>，详见部署文档。
+                </li>
+              </ol>
+            </details>
           </div>
 
           {/* Right — live screen */}

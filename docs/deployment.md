@@ -49,6 +49,30 @@ domain** (Scenario 2) — there's no separate server-address field to edit in th
 QR and the on-page hint follow whatever URL you browse with. A real phone can never use
 `localhost` — that only works for an emulator running on the operator's own machine.
 
+### When the auto-detected LAN IP is wrong (VPN / multiple network cards)
+
+The `localhost` row above relies on the backend **auto-detecting** its LAN IP — it asks
+the OS which interface would route to the internet. On a machine with a **VPN or virtual
+adapters** (corporate VPN, Radmin, Docker, VMware…) this picks the wrong address, because
+those interfaces can own the default route. The Web UI then hands devices an address like
+`10.x` (VPN) or `26.x` (virtual NIC) that a phone on WiFi simply cannot reach — the QR
+"loads forever" or the APK download fails.
+
+**Reliable fix — open the Web UI at the exact LAN IP you want devices to use**, e.g.
+`http://192.168.31.215:5173`. When the host isn't `localhost`, every device address (QR,
+pairing, APK download) follows the address bar verbatim and auto-detection is bypassed.
+Find your real LAN IP with `ipconfig` (Windows) / `ip addr` (Linux) / `ipconfig getifaddr
+en0` (macOS) — it's the address on the adapter actually attached to your router's network
+(usually `192.168.*`, sometimes `10.*` / `172.16–31.*`). Alternatively, disconnect the VPN
+so the default route returns to your LAN adapter.
+
+> **Also check the firewall.** Devices reach the frontend (`5173`) and backend (`8000`)
+> ports directly, so inbound TCP on those ports must be allowed. On Windows, allow them
+> once in an Admin PowerShell:
+> ```powershell
+> New-NetFirewallRule -DisplayName "Smart-AI-Bot LAN" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5173,8000
+> ```
+
 ---
 
 ## Scenario 1 — Local / LAN (development & in-team trial)
