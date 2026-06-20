@@ -301,6 +301,7 @@ class TestCaseAgent:
         lessons_learned: Optional[list] = None,  # negative experiences from past runs
         fallbacks: Optional[list] = None,  # list[ModelTarget] for resilient_completion
         allow_subagents: bool = True,  # decompose complex tasks into sub-agents
+        loop_task: bool = False,  # inherently repetitive task (quiz/bulk) — skip L4 backstop
     ):
         self.device = device
         self.provider = provider
@@ -311,6 +312,7 @@ class TestCaseAgent:
         self.step_delay = step_delay
         self.log_callback = log_callback
         self.allow_subagents = allow_subagents
+        self.loop_task = loop_task
         self.fallbacks: list = fallbacks or []
         self._primary = ModelTarget(provider, model, api_key, api_base)
         # Verifier uses its own model if configured, otherwise falls back to the agent model.
@@ -702,6 +704,12 @@ class TestCaseAgent:
                         if inserted:
                             ui_text = "\n".join(lines)
 
+                # Record a fingerprint of the screen seen this step. Combined
+                # with action signatures in is_stuck(), this distinguishes a
+                # genuine loop (same action + frozen screen) from real progress
+                # (same action but the screen keeps changing, e.g. quiz answers).
+                memory.record_state(ui_text)
+
                 # Decide whether to include screenshot or go text-only.
                 # Rich a11y tree → text-only (save ~60% tokens, 2-3x faster).
                 # Weak/empty tree, first step, or periodic check → include image.
@@ -751,8 +759,14 @@ class TestCaseAgent:
 
                 await memory.compress(self._summarize)
 
-                # ── Auto-recovery (when stuck at level 2+) ───────────────────
-                if memory.recovery_level >= 4:
+                # ── Backstop: force-fail only on a genuine loop ──────────────
+                # is_stuck() now requires BOTH the action AND the screen to be
+                # frozen, so recovery_level only climbs on a real loop — never
+                # on tasks that repeat one action while making progress (quiz,
+                # bulk like, pagination). We no longer force back/restart; the
+                # agent is trusted to break out, guided by the prompt warning.
+                # loop_task cases skip even this backstop and rely on max_steps.
+                if memory.recovery_level >= 4 and not self.loop_task:
                     await self._log("  🛑 Auto-recovery: forcing fail after prolonged stuck")
                     return CaseResult(
                         status="fail",
@@ -763,25 +777,6 @@ class TestCaseAgent:
                         action_history=list(memory.action_records),
                         step_logs=step_logs_list,
                     )
-                if memory.recovery_level == 3:
-                    await self._log("  🔄 Auto-recovery (L3): restarting app")
-                    log_lines.append(f"[{steps}] AUTO_RECOVERY: start_app")
-                    # Try to extract package name from notes or action history
-                    pkg = memory.notes.get("target_app", "")
-                    if pkg:
-                        try:
-                            await self.device.start_app(pkg)
-                            await asyncio.sleep(2.5)
-                        except Exception:
-                            pass
-                elif memory.recovery_level == 2:
-                    await self._log("  🔄 Auto-recovery (L2): going back")
-                    log_lines.append(f"[{steps}] AUTO_RECOVERY: global_action(back)")
-                    try:
-                        await self.device.global_action("back")
-                        await asyncio.sleep(1.5)
-                    except Exception:
-                        pass
 
                 # ── Decision (LLM) ────────────────────────────────────────────
                 _t1 = time.monotonic()
