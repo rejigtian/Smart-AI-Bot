@@ -33,3 +33,67 @@ def flatten_chain(chain: List[ChainItem]) -> TestCaseData:
     expected = chain[-1].expected
     steps = [Step(action=i.action, expected=i.expected) for i in chain if i.expected]
     return TestCaseData(path=path, expected=expected, steps=steps)
+
+
+@dataclass
+class LegacyCase:
+    """A legacy flat TestCase to migrate."""
+    path: str
+    expected: str
+    case_id: str
+    loop_task: bool = False
+    checkpoints: List[tuple] = field(default_factory=list)  # list[(action, expected)]
+
+
+@dataclass
+class BuiltNode:
+    action: str
+    expected: str = ""
+    loop_task: bool = False
+    order: int = 0
+    source_case_id: str | None = None   # set on the final (run-target) node only
+    children: List["BuiltNode"] = field(default_factory=list)
+
+
+def _split_path(path: str) -> List[str]:
+    return [seg.strip() for seg in (path or "").split(">") if seg.strip()]
+
+
+def build_tree_from_cases(cases: List[LegacyCase]) -> List[BuiltNode]:
+    """Materialize legacy flat cases into a step-tree (list of root BuiltNodes).
+
+    Cases sharing a leading path prefix merge into the same nodes. Each case's
+    checkpoints become a deeper chain under its leaf path-node; the final node
+    carries that case's expected, loop_task, and source_case_id.
+    """
+    roots: List[BuiltNode] = []
+
+    def _child(siblings: List[BuiltNode], action: str) -> BuiltNode:
+        for n in siblings:
+            if n.action == action:
+                return n
+        node = BuiltNode(action=action, order=len(siblings))
+        siblings.append(node)
+        return node
+
+    for c in cases:
+        segs = _split_path(c.path)
+        # Walk/extend the shared path prefix.
+        siblings = roots
+        node: BuiltNode | None = None
+        for seg in segs:
+            node = _child(siblings, seg)
+            siblings = node.children
+        # Append checkpoints as a deeper chain under the leaf path-node.
+        for action, expected in c.checkpoints:
+            nxt = _child(siblings, action)
+            nxt.expected = expected
+            node = nxt
+            siblings = node.children
+        # The final node is the run target: stamp case identity + final expected.
+        if node is not None:
+            if not node.expected:
+                node.expected = c.expected
+            node.loop_task = c.loop_task
+            node.source_case_id = c.case_id
+    return roots

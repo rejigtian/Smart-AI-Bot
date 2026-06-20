@@ -32,3 +32,44 @@ def test_flatten_intermediate_expecteds_become_checkpoints():
 def test_flatten_empty_chain():
     tc = flatten_chain([])
     assert tc.path == "" and tc.expected == "" and tc.steps == []
+
+
+from core.step_tree import LegacyCase, build_tree_from_cases
+
+
+def _find(nodes, action):
+    for n in nodes:
+        if n.action == action:
+            return n
+    raise AssertionError(f"no node {action!r} in {[n.action for n in nodes]}")
+
+
+def test_build_tree_merges_shared_prefix():
+    cases = [
+        LegacyCase(path="登录 > 我的页面 > 答题", expected="完成", checkpoints=[],
+                   loop_task=False, case_id="c1"),
+        LegacyCase(path="登录 > 我的页面 > 设置", expected="打开设置", checkpoints=[],
+                   loop_task=False, case_id="c2"),
+    ]
+    roots = build_tree_from_cases(cases)
+    login = _find(roots, "登录")                 # single shared root
+    mine = _find(login.children, "我的页面")       # single shared node
+    assert {c.action for c in mine.children} == {"答题", "设置"}
+    answer = _find(mine.children, "答题")
+    assert answer.expected == "完成" and answer.source_case_id == "c1"
+
+
+def test_build_tree_appends_checkpoints_under_leaf():
+    cases = [
+        LegacyCase(path="登录 > 语音", expected="完成", loop_task=True, case_id="c3",
+                   checkpoints=[("点击录音", "开始录音"), ("试听", "可播放")]),
+    ]
+    roots = build_tree_from_cases(cases)
+    voice = _find(_find(roots, "登录").children, "语音")
+    rec = _find(voice.children, "点击录音")
+    assert rec.expected == "开始录音"
+    listen = _find(rec.children, "试听")
+    assert listen.expected == "可播放"
+    # case identity + loop_task land on the final node (the run target)
+    assert listen.source_case_id == "c3" and listen.loop_task is True
+    assert voice.source_case_id is None
