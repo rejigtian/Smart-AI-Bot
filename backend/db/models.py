@@ -55,6 +55,27 @@ class TestCase(Base):
     suite: Mapped["TestSuite"] = relationship(back_populates="cases")
 
 
+class StepNode(Base):
+    """One step in a suite's step-tree. A test case = a root→node path.
+
+    Shared prefixes are a single node (true reuse): every case passing through
+    a node references the same row. See the step-tree design spec.
+    """
+    __tablename__ = "step_nodes"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    suite_id: Mapped[str] = mapped_column(ForeignKey("test_suites.id"), index=True)
+    parent_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("step_nodes.id"), nullable=True, index=True
+    )  # null = root step
+    action: Mapped[str] = mapped_column(Text, default="")       # 行为: what this step does
+    expected: Mapped[str] = mapped_column(Text, default="")     # 期望 (optional); "" = success-is-done
+    order: Mapped[int] = mapped_column(Integer, default=0)      # sibling order
+    reversible: Mapped[bool] = mapped_column(Boolean, default=True)   # Phase 2: back-navigable
+    loop_task: Mapped[bool] = mapped_column(Boolean, default=False)   # repetitive task
+    parameters: Mapped[str] = mapped_column(Text, default="")         # JSON preset test data
+
+
 class TestRun(Base):
     """One execution of a full suite against a device."""
     __tablename__ = "test_runs"
