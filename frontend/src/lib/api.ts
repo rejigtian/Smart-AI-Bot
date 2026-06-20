@@ -303,6 +303,9 @@ export const deleteNode = (suiteId: string, nodeId: string) =>
 export const runTree = (data: { suite_id: string; device_id: string; provider: string; model: string; max_steps: number }) =>
   api.post<Run>('/runs/tree', data).then(r => r.data)
 
+export const runNode = (data: { suite_id: string; device_id: string; node_id: string; provider: string; model: string; max_steps: number }) =>
+  api.post<Run>('/runs/node', data).then(r => r.data)
+
 // ── Settings ─────────────────────────────────────────────────────────────────
 
 export const fetchSettings = () => api.get<Settings>('/settings').then(r => r.data)

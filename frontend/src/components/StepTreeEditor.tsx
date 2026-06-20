@@ -27,10 +27,11 @@ function buildTree(nodes: StepNode[]): TreeNode[] {
 // ── One editable node row ───────────────────────────────────────────────────
 
 function NodeRow({
-  node, depth, suiteId, dragId, setDragId,
+  node, depth, suiteId, dragId, setDragId, onRunNode,
 }: {
   node: TreeNode; depth: number; suiteId: string
   dragId: string | null; setDragId: (id: string | null) => void
+  onRunNode?: (nodeId: string) => void
 }) {
   const qc = useQueryClient()
   const invalidate = () => qc.invalidateQueries({ queryKey: ['nodes', suiteId] })
@@ -115,6 +116,13 @@ function NodeRow({
           </div>
         </div>
         <div className="flex gap-1 flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          {onRunNode && (
+            <button className="px-2 py-0.5 text-xs border border-primary text-primary rounded hover:bg-primary-soft"
+                    onClick={() => onRunNode(node.id)}
+                    title="运行到这个节点（执行 root→该节点的整条链）">
+              ▶ 运行
+            </button>
+          )}
           <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setAdding(true)}>+ 步骤</button>
           <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setEditing(true)}>编辑</button>
           <button className="px-2 py-0.5 text-xs border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-50"
@@ -130,7 +138,7 @@ function NodeRow({
       )}
       {node.children.map(c => (
         <NodeRow key={c.id} node={c} depth={depth + 1} suiteId={suiteId}
-                 dragId={dragId} setDragId={setDragId} />
+                 dragId={dragId} setDragId={setDragId} onRunNode={onRunNode} />
       ))}
     </>
   )
@@ -173,7 +181,7 @@ function AddNodeForm({
 
 // ── Editor root ─────────────────────────────────────────────────────────────
 
-export default function StepTreeEditor({ suiteId }: { suiteId: string }) {
+export default function StepTreeEditor({ suiteId, onRunNode }: { suiteId: string; onRunNode?: (nodeId: string) => void }) {
   const { data: nodes = [], isLoading } = useQuery({
     queryKey: ['nodes', suiteId],
     queryFn: () => fetchNodes(suiteId),
@@ -190,7 +198,7 @@ export default function StepTreeEditor({ suiteId }: { suiteId: string }) {
         <div className="px-4 py-6 text-sm text-gray-400 text-center">还没有步骤。点下面「+ 根步骤」开始。</div>
       )}
       {tree.map(n => (
-        <NodeRow key={n.id} node={n} depth={0} suiteId={suiteId} dragId={dragId} setDragId={setDragId} />
+        <NodeRow key={n.id} node={n} depth={0} suiteId={suiteId} dragId={dragId} setDragId={setDragId} onRunNode={onRunNode} />
       ))}
       {addingRoot
         ? <AddNodeForm suiteId={suiteId} parentId={null} indentPx={16} onDone={() => setAddingRoot(false)} />
