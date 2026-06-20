@@ -4,6 +4,47 @@ All notable changes to Smart-AI-Bot are documented here.
 
 ---
 
+## v1.1.3
+
+**English**
+
+### Fixed
+- **Screenshots could fail mid-run and the live screen tore** — the agent and the
+  live preview both drove Android's accessibility screenshot, which the OS
+  rate-limits to ~1/s; colliding requests returned a corrupt frame that aborted
+  the case. Device screenshots are now serialized per device with a minimum
+  interval and a short cache: the preview reuses the agent's latest frame instead
+  of competing, and the agent always gets a fresh one.
+- **Device-side errors surfaced as a cryptic crash** — a Portal `status:"error"`
+  reply (e.g. a failed screenshot) was treated as a successful result and
+  base64-decoded; it is now raised as a clear error.
+
+### Added / Changed (Portal app)
+- **MIUI / HyperOS support** — declare the installed-app-list permission, retry
+  the rate-limited screenshot, and one-tap deep-link to MIUI's per-app permission
+  editor (后台弹出界面 / 读取应用列表 / 悬浮窗). The setup card now shows per-item
+  ✓/✗ status instead of a long toast.
+- Runtime permissions are requested in one batch, so every prompt appears on the
+  first launch.
+- The built-in QR scanner is locked to portrait.
+- The IME (custom keyboard) step is marked optional.
+
+**简体中文**
+
+### 修复
+- **运行中截图可能失败、实时画面裂图** —— Agent 与实时预览同时调用 Android 无障碍截图，
+  而系统将其限流到约每秒一次，撞车时返回损坏帧导致用例报错。现在每设备串行截图 + 最小间隔
+  + 短缓存：预览复用 Agent 最近的帧、不再竞争，Agent 始终拿到新帧。
+- **设备端错误显示为莫名崩溃** —— Portal 的 `status:"error"`（如截图失败）被当成成功结果去
+  base64 解码；现在会作为清晰的错误抛出。
+
+### 新增 / 调整（Portal App）
+- **适配 MIUI / HyperOS** —— 声明读取应用列表权限、对限流截图自动重试、一键直达 MIUI 原生
+  权限页（后台弹出界面 / 读取应用列表 / 悬浮窗）；设置卡逐项显示 ✓/✗ 状态，替代冗长 toast。
+- 运行时权限合并为一次性申请，首次启动即逐个弹出。
+- 内置扫码页锁定为竖屏。
+- 输入法（自定义键盘）步骤标注为可选。
+
 ## v1.1.2
 
 **English**
