@@ -39,6 +39,12 @@ class AgentMemory:
     # Not injected into messages; used only by is_stuck().
     _call_signatures: List[str] = field(default_factory=list)
 
+    # Fingerprint (hash) of the screen seen each step — parallel to
+    # _call_signatures. is_stuck() requires BOTH to be frozen, so a repeated
+    # action whose screen keeps changing (e.g. answering quiz questions) is
+    # correctly treated as progress, not a loop.
+    _state_signatures: List[str] = field(default_factory=list)
+
     # Structured action records — persisted to DB after a successful run.
     # Each entry: {"step": int, "fn_name": str, "args": dict, "result": str}
     action_records: List[Dict[str, Any]] = field(default_factory=list)
@@ -220,18 +226,32 @@ class AgentMemory:
             if len(self._activity_history) > 15:
                 self._activity_history = self._activity_history[-15:]
 
-    def is_stuck(self, window: int = _STUCK_WINDOW) -> bool:
-        """Return True if the last `window` actions are all identical.
+    def record_state(self, ui_text: str) -> None:
+        """Record a fingerprint of the screen the agent saw this step.
 
-        Only action-level stuck (same action repeated) counts for recovery
-        escalation. Page-stuck alone is NORMAL — many tasks run entirely
-        within one Activity. Use is_page_stuck() separately for warnings.
+        Used by is_stuck() alongside action signatures. Called once per loop
+        step so _state_signatures stays roughly step-aligned with the actions.
         """
-        if len(self._call_signatures) < window:
+        self._state_signatures.append(str(hash(ui_text)))
+
+    def is_stuck(self, window: int = _STUCK_WINDOW) -> bool:
+        """Return True only if the last `window` actions are identical AND the
+        screen state hasn't changed across them.
+
+        Action-repetition alone is NOT stuck: many tasks (quizzes, bulk likes,
+        pagination) legitimately repeat the same action while each step makes
+        real progress. Requiring the UI-state fingerprint to also be frozen
+        prevents those from being misflagged as a loop. Each list's window is
+        checked independently for internal uniqueness, so the natural one-step
+        offset between state (recorded before the action) and action (recorded
+        after) does not matter — only a genuine double-freeze escalates.
+        """
+        if len(self._call_signatures) < window or len(self._state_signatures) < window:
             self.recovery_level = 0
             return False
-        tail = self._call_signatures[-window:]
-        stuck = len(set(tail)) == 1
+        actions_frozen = len(set(self._call_signatures[-window:])) == 1
+        states_frozen = len(set(self._state_signatures[-window:])) == 1
+        stuck = actions_frozen and states_frozen
         if stuck:
             self.recovery_level = min(self.recovery_level + 1, 4)
         else:
@@ -278,27 +298,29 @@ class AgentMemory:
             fn = last_sig.split(":")[0]
             if self.recovery_level <= 1:
                 stuck_warn = (
-                    f"\n\n⚠ WARNING: You repeated {fn}() {_STUCK_WINDOW}+ times with no change. "
-                    f"Try: (1) scroll() if the target element might be off-screen, "
-                    f"(2) global_action('back') to exit this screen, "
-                    f"(3) start_app(target_package) to reset to app home."
+                    f"\n\n⚠ NOTE: {fn}() repeated {_STUCK_WINDOW}+ times with NO change "
+                    f"on screen. If that isn't making progress, try a different approach: "
+                    f"scroll() if the target may be off-screen, global_action('back') to "
+                    f"leave this screen, start_app(target_package) to reset, or "
+                    f"mark_done(status='fail') if the task can't be completed."
                 )
             elif self.recovery_level == 2:
                 stuck_warn = (
-                    f"\n\n🚨 STUCK (level 2): {fn}() repeated 6+ times. "
-                    f"You MUST call global_action('back') NOW to go back, "
-                    f"then try a completely different navigation path."
+                    f"\n\n⚠ NOTE (persistent): {fn}() repeated 6+ times and the screen "
+                    f"hasn't changed. Strongly consider a different path now — go back, "
+                    f"scroll, or restart the app — rather than repeating the same action."
                 )
             elif self.recovery_level == 3:
                 stuck_warn = (
-                    f"\n\n🚨 STUCK (level 3): Still stuck after going back. "
-                    f"Call start_app() to restart the app from scratch, "
-                    f"or call mark_done(status='fail') if the task is impossible."
+                    f"\n\n⚠ NOTE (persistent): still no screen change after repeated "
+                    f"attempts. Consider start_app() to reset, or mark_done(status='fail') "
+                    f"if the task is impossible."
                 )
             else:
                 stuck_warn = (
-                    f"\n\n🛑 STUCK (level 4): You have been stuck for too long. "
-                    f"Call mark_done(status='fail', reason='Unable to complete — stuck in loop') NOW."
+                    f"\n\n🛑 You appear truly stuck (same action, no screen change for a "
+                    f"long time). Call mark_done(status='fail', reason='Unable to complete "
+                    f"— stuck in loop') if you cannot find another path."
                 )
 
         suffix = f"\n\nStep {step + 1}: What action should you take next?{stuck_warn}"
