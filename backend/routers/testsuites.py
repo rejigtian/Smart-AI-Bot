@@ -44,7 +44,10 @@ class CaseIn(BaseModel):
     expected: str = ""
     parameters: str = ""  # JSON array: [{"key": "val"}, ...]
     checkpoints: str = ""  # JSON array: [{"action": "...", "expected": "..."}, ...]
-    loop_task: bool = False  # repetitive task (quiz/bulk) — skips the L4 stuck backstop
+    # repetitive task (quiz/bulk) — skips the L4 stuck backstop. None = leave
+    # unchanged on update (callers that send a partial body, e.g. rename, must
+    # not silently reset it).
+    loop_task: Optional[bool] = None
 
 
 @router.get("", response_model=List[SuiteOut])
@@ -179,7 +182,7 @@ async def add_case(suite_id: str, body: CaseIn, db: AsyncSession = Depends(get_d
         suite_id=suite_id, path=body.path, expected=body.expected,
         order=max_order + 1, parameters=body.parameters,
         checkpoints=body.checkpoints or "",
-        loop_task=body.loop_task,
+        loop_task=bool(body.loop_task),
     )
     db.add(case)
     await db.commit()
@@ -202,7 +205,8 @@ async def update_case(
     case.expected = body.expected
     case.parameters = body.parameters
     case.checkpoints = body.checkpoints or ""
-    case.loop_task = body.loop_task
+    if body.loop_task is not None:
+        case.loop_task = body.loop_task
     await db.commit()
     return CaseOut(
         id=case.id, order=case.order, path=case.path, expected=case.expected,
