@@ -216,6 +216,7 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
                 verifier_provider=v_provider, verifier_model=v_model,
                 verifier_api_key=v_key, verifier_api_base=v_base, fallbacks=fallbacks,
                 allow_subagents=False,
+                loop_task=case_row.loop_task,
                 reference_examples=reference_examples or None,
                 lessons_learned=lessons or None,
             )
@@ -491,6 +492,7 @@ async def execute_run(
                 verifier_model=v_model,
                 verifier_api_key=v_key,
                 verifier_api_base=v_base,
+                loop_task=case_row.loop_task,
                 reference_examples=reference_examples or None,
                 lessons_learned=lessons or None,
                 fallbacks=fallbacks,
@@ -528,6 +530,7 @@ async def execute_run(
                         log_callback=log_cb,
                         verifier_provider=v_provider, verifier_model=v_model,
                         verifier_api_key=v_key, verifier_api_base=v_base,
+                        loop_task=case_row.loop_task,
                         reference_examples=reference_examples or None,
                         fallbacks=fallbacks,
                     )

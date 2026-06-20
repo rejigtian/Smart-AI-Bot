@@ -47,6 +47,10 @@ class TestCase(Base):
     # each step in order and fails the case on the first miss.  Empty for
     # legacy single-expected cases.
     checkpoints: Mapped[str] = mapped_column(Text, default="")
+    # Inherently repetitive task (e.g. a 100-question quiz): repeats the same
+    # action while making real progress. Skips the L4 stuck-loop backstop and
+    # relies on max_steps instead. See docs/agent-architecture.md.
+    loop_task: Mapped[bool] = mapped_column(Boolean, default=False)
 
     suite: Mapped["TestSuite"] = relationship(back_populates="cases")
 

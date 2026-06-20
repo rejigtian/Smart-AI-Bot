@@ -36,6 +36,7 @@ class CaseOut(BaseModel):
     parameters: str = ""
     # JSON list of {action, expected}; empty when the case is legacy single-expected.
     checkpoints: str = ""
+    loop_task: bool = False  # repetitive task (quiz/bulk) — skips the L4 stuck backstop
 
 
 class CaseIn(BaseModel):
@@ -43,6 +44,7 @@ class CaseIn(BaseModel):
     expected: str = ""
     parameters: str = ""  # JSON array: [{"key": "val"}, ...]
     checkpoints: str = ""  # JSON array: [{"action": "...", "expected": "..."}, ...]
+    loop_task: bool = False  # repetitive task (quiz/bulk) — skips the L4 stuck backstop
 
 
 @router.get("", response_model=List[SuiteOut])
@@ -147,6 +149,7 @@ async def list_cases(suite_id: str, db: AsyncSession = Depends(get_db)):
         CaseOut(
             id=c.id, order=c.order, path=c.path, expected=c.expected,
             parameters=c.parameters or "", checkpoints=c.checkpoints or "",
+            loop_task=c.loop_task,
         )
         for c in cases
     ]
@@ -176,6 +179,7 @@ async def add_case(suite_id: str, body: CaseIn, db: AsyncSession = Depends(get_d
         suite_id=suite_id, path=body.path, expected=body.expected,
         order=max_order + 1, parameters=body.parameters,
         checkpoints=body.checkpoints or "",
+        loop_task=body.loop_task,
     )
     db.add(case)
     await db.commit()
@@ -183,6 +187,7 @@ async def add_case(suite_id: str, body: CaseIn, db: AsyncSession = Depends(get_d
     return CaseOut(
         id=case.id, order=case.order, path=case.path, expected=case.expected,
         parameters=case.parameters or "", checkpoints=case.checkpoints or "",
+        loop_task=case.loop_task,
     )
 
 
@@ -197,10 +202,12 @@ async def update_case(
     case.expected = body.expected
     case.parameters = body.parameters
     case.checkpoints = body.checkpoints or ""
+    case.loop_task = body.loop_task
     await db.commit()
     return CaseOut(
         id=case.id, order=case.order, path=case.path, expected=case.expected,
         parameters=case.parameters or "", checkpoints=case.checkpoints or "",
+        loop_task=case.loop_task,
     )
 
 

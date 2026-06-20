@@ -52,6 +52,7 @@ async def init_db():
         await _ensure_columns("test_cases", {
             "parameters": "TEXT DEFAULT ''",
             "checkpoints": "TEXT DEFAULT ''",
+            "loop_task": "BOOLEAN DEFAULT 0",
         })
 
         # suite_id + task_keyword were added to LessonLearned after the table
