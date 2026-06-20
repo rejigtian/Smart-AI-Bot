@@ -97,3 +97,47 @@ def build_tree_from_cases(cases: List[LegacyCase]) -> List[BuiltNode]:
             node.loop_task = c.loop_task
             node.source_case_id = c.case_id
     return roots
+
+
+@dataclass
+class NodeRow:
+    """A flat StepNode row (id, parent_id, action, expected, order)."""
+    id: str
+    parent_id: str | None
+    action: str
+    expected: str = ""
+    order: int = 0
+
+
+@dataclass
+class RunTarget:
+    node_id: str
+    chain: List[ChainItem]   # root→target, in order
+
+
+def dfs_run_targets(nodes: List[NodeRow]) -> List[RunTarget]:
+    """Depth-first over the step-tree; one RunTarget per leaf (root→leaf chain).
+
+    Siblings ordered by `order`. Leaves sharing a prefix come out adjacent, so a
+    caller can share the common prefix via back-navigation between them.
+    """
+    children: dict = {}
+    for n in nodes:
+        children.setdefault(n.parent_id, []).append(n)
+    for sibs in children.values():
+        sibs.sort(key=lambda x: x.order)
+
+    targets: List[RunTarget] = []
+
+    def walk(node: NodeRow, prefix: List[ChainItem]) -> None:
+        chain = prefix + [ChainItem(node.action, node.expected)]
+        kids = children.get(node.id, [])
+        if not kids:
+            targets.append(RunTarget(node_id=node.id, chain=chain))
+            return
+        for c in kids:
+            walk(c, chain)
+
+    for root in children.get(None, []):
+        walk(root, [])
+    return targets

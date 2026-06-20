@@ -73,3 +73,36 @@ def test_build_tree_appends_checkpoints_under_leaf():
     # case identity + loop_task land on the final node (the run target)
     assert listen.source_case_id == "c3" and listen.loop_task is True
     assert voice.source_case_id is None
+
+
+from core.step_tree import NodeRow, RunTarget, dfs_run_targets
+
+
+def test_dfs_targets_leaf_order_and_chains():
+    # 登录 ─ 我的页面 ─┬ 答题
+    #                  └ 设置
+    nodes = [
+        NodeRow("n1", None, "登录", order=0),
+        NodeRow("n2", "n1", "我的页面", order=0),
+        NodeRow("n3", "n2", "答题", expected="完成", order=0),
+        NodeRow("n4", "n2", "设置", order=1),
+    ]
+    targets = dfs_run_targets(nodes)
+    assert [t.node_id for t in targets] == ["n3", "n4"]           # leaves only, DFS order
+    assert [c.action for c in targets[0].chain] == ["登录", "我的页面", "答题"]
+    assert targets[0].chain[-1].expected == "完成"
+    assert [c.action for c in targets[1].chain] == ["登录", "我的页面", "设置"]
+
+
+def test_dfs_targets_respects_sibling_order_and_multiple_roots():
+    nodes = [
+        NodeRow("b", None, "B", order=1),
+        NodeRow("a", None, "A", order=0),
+        NodeRow("a1", "a", "A1", order=0),
+    ]
+    targets = dfs_run_targets(nodes)
+    assert [t.node_id for t in targets] == ["a1", "b"]            # root A (order 0) before B
+
+
+def test_dfs_targets_empty():
+    assert dfs_run_targets([]) == []
