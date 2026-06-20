@@ -267,6 +267,42 @@ export const updateCase = (
 export const deleteCase = (suiteId: string, caseId: string) =>
   api.delete(`/suites/${suiteId}/cases/${caseId}`)
 
+// ── Step-tree nodes ───────────────────────────────────────────────────────────
+
+export interface StepNode {
+  id: string
+  suite_id: string
+  parent_id: string | null
+  action: string
+  expected: string
+  order: number
+  reversible: boolean
+  loop_task: boolean
+}
+
+export const fetchNodes = (suiteId: string) =>
+  api.get<StepNode[]>(`/suites/${suiteId}/nodes`).then(r => r.data)
+
+export const addNode = (
+  suiteId: string,
+  data: { parent_id: string | null; action: string; expected?: string; loop_task?: boolean },
+) => api.post<StepNode>(`/suites/${suiteId}/nodes`, data).then(r => r.data)
+
+export const updateNode = (
+  suiteId: string,
+  nodeId: string,
+  data: { action?: string; expected?: string; loop_task?: boolean; reversible?: boolean },
+) => api.put<StepNode>(`/suites/${suiteId}/nodes/${nodeId}`, data).then(r => r.data)
+
+export const moveNode = (suiteId: string, nodeId: string, newParentId: string | null) =>
+  api.post<StepNode>(`/suites/${suiteId}/nodes/${nodeId}/move`, { new_parent_id: newParentId }).then(r => r.data)
+
+export const deleteNode = (suiteId: string, nodeId: string) =>
+  api.delete(`/suites/${suiteId}/nodes/${nodeId}`)
+
+export const runTree = (data: { suite_id: string; device_id: string; provider: string; model: string; max_steps: number }) =>
+  api.post<Run>('/runs/tree', data).then(r => r.data)
+
 // ── Settings ─────────────────────────────────────────────────────────────────
 
 export const fetchSettings = () => api.get<Settings>('/settings').then(r => r.data)

@@ -1,0 +1,201 @@
+import { useMemo, useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  fetchNodes, addNode, updateNode, deleteNode, moveNode, StepNode,
+} from '../lib/api'
+
+// ── Tree assembly from the flat parent_id list ──────────────────────────────
+
+type TreeNode = StepNode & { children: TreeNode[] }
+
+function buildTree(nodes: StepNode[]): TreeNode[] {
+  const byId = new Map<string, TreeNode>()
+  nodes.forEach(n => byId.set(n.id, { ...n, children: [] }))
+  const roots: TreeNode[] = []
+  byId.forEach(n => {
+    if (n.parent_id && byId.has(n.parent_id)) byId.get(n.parent_id)!.children.push(n)
+    else roots.push(n)
+  })
+  const sortRec = (list: TreeNode[]) => {
+    list.sort((a, b) => a.order - b.order)
+    list.forEach(c => sortRec(c.children))
+  }
+  sortRec(roots)
+  return roots
+}
+
+// ── One editable node row ───────────────────────────────────────────────────
+
+function NodeRow({
+  node, depth, suiteId, dragId, setDragId,
+}: {
+  node: TreeNode; depth: number; suiteId: string
+  dragId: string | null; setDragId: (id: string | null) => void
+}) {
+  const qc = useQueryClient()
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['nodes', suiteId] })
+  const [editing, setEditing] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [dropHover, setDropHover] = useState(false)
+  const [action, setAction] = useState(node.action)
+  const [expected, setExpected] = useState(node.expected)
+  const [loopTask, setLoopTask] = useState(node.loop_task)
+  const indent = depth * 18
+
+  const saveMut = useMutation({
+    mutationFn: () => updateNode(suiteId, node.id, { action, expected, loop_task: loopTask }),
+    onSuccess: () => { invalidate(); setEditing(false) },
+  })
+  const delMut = useMutation({
+    mutationFn: () => deleteNode(suiteId, node.id),
+    onSuccess: invalidate,
+  })
+  const moveMut = useMutation({
+    mutationFn: (childId: string) => moveNode(suiteId, childId, node.id),
+    onSuccess: invalidate,
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || String(e)
+      alert(`移动失败: ${msg}`)
+    },
+  })
+
+  if (editing) {
+    return (
+      <div className="px-4 py-3 bg-primary-soft border-t" style={{ paddingLeft: 16 + indent }}>
+        <div className="text-xs text-gray-500 mb-1">行为 / Action</div>
+        <input className="w-full border rounded px-2 py-1 text-sm mb-2 font-mono"
+               value={action} onChange={e => setAction(e.target.value)} />
+        <div className="text-xs text-gray-500 mb-1">期望 / Expected（留空 = 执行成功即通过）</div>
+        <input className="w-full border rounded px-2 py-1 text-sm mb-2"
+               value={expected} onChange={e => setExpected(e.target.value)} />
+        <label className="flex items-center gap-2 mb-3 text-xs text-gray-600 cursor-pointer">
+          <input type="checkbox" checked={loopTask} onChange={e => setLoopTask(e.target.checked)} />
+          循环任务（重复同一动作的任务，跳过卡死兜底）
+        </label>
+        <div className="flex gap-2">
+          <button className="px-3 py-1 bg-primary text-white text-xs rounded hover:bg-primary-deep disabled:opacity-50"
+                  disabled={saveMut.isPending || action.trim() === ''}
+                  onClick={() => saveMut.mutate()}>
+            {saveMut.isPending ? '保存中…' : '保存'}
+          </button>
+          <button className="px-3 py-1 border text-xs rounded hover:bg-gray-100"
+                  onClick={() => { setAction(node.action); setExpected(node.expected); setLoopTask(node.loop_task); setEditing(false) }}>
+            取消
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div
+        className={`pr-4 py-2 flex items-start gap-2 group border-t ${dropHover ? 'bg-amber-50' : ''}`}
+        style={{ paddingLeft: 16 + indent }}
+        draggable
+        onDragStart={() => setDragId(node.id)}
+        onDragEnd={() => setDragId(null)}
+        onDragOver={e => { if (dragId && dragId !== node.id) { e.preventDefault(); setDropHover(true) } }}
+        onDragLeave={() => setDropHover(false)}
+        onDrop={e => {
+          e.preventDefault(); setDropHover(false)
+          if (dragId && dragId !== node.id) moveMut.mutate(dragId)
+        }}
+        title="拖动到另一个节点上 = 改挂到它下面"
+      >
+        <span className="text-ink-faint mt-0.5 select-none cursor-grab">⋮⋮</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium">
+            {node.action || <span className="text-gray-400">（空步骤）</span>}
+            {node.expected
+              ? <span className="ml-2 align-middle px-1.5 py-0.5 text-[10px] rounded bg-blue-100 text-blue-700">期望: {node.expected}</span>
+              : <span className="ml-2 align-middle text-[10px] text-gray-400">执行成功即通过</span>}
+            {node.loop_task && <span className="ml-2 align-middle px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700">循环</span>}
+            {!node.reversible && <span className="ml-2 align-middle text-[10px]" title="不可回退">🔒</span>}
+          </div>
+        </div>
+        <div className="flex gap-1 flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setAdding(true)}>+ 步骤</button>
+          <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setEditing(true)}>编辑</button>
+          <button className="px-2 py-0.5 text-xs border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-50"
+                  disabled={delMut.isPending}
+                  onClick={() => { if (confirm('删除这个节点？子节点会上提到它的父节点。')) delMut.mutate() }}>
+            删除
+          </button>
+        </div>
+      </div>
+      {adding && (
+        <AddNodeForm suiteId={suiteId} parentId={node.id} indentPx={16 + indent + 18}
+                     onDone={() => setAdding(false)} />
+      )}
+      {node.children.map(c => (
+        <NodeRow key={c.id} node={c} depth={depth + 1} suiteId={suiteId}
+                 dragId={dragId} setDragId={setDragId} />
+      ))}
+    </>
+  )
+}
+
+// ── Add-a-step form (child of parentId, or root when null) ───────────────────
+
+function AddNodeForm({
+  suiteId, parentId, indentPx, onDone,
+}: {
+  suiteId: string; parentId: string | null; indentPx: number; onDone: () => void
+}) {
+  const qc = useQueryClient()
+  const [action, setAction] = useState('')
+  const [expected, setExpected] = useState('')
+  const addMut = useMutation({
+    mutationFn: () => addNode(suiteId, { parent_id: parentId, action: action.trim(), expected: expected.trim() }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['nodes', suiteId] }); onDone() },
+  })
+  return (
+    <div className="py-3 bg-green-50 border-t" style={{ paddingLeft: indentPx, paddingRight: 16 }}>
+      <div className="text-xs text-gray-500 mb-1">行为 / Action</div>
+      <input autoFocus className="w-full border rounded px-2 py-1 text-sm mb-2 font-mono"
+             placeholder="这一步做什么" value={action} onChange={e => setAction(e.target.value)} />
+      <div className="text-xs text-gray-500 mb-1">期望 / Expected（可选）</div>
+      <input className="w-full border rounded px-2 py-1 text-sm mb-2"
+             placeholder="留空 = 执行成功即通过" value={expected}
+             onChange={e => setExpected(e.target.value)}
+             onKeyDown={e => { if (e.key === 'Enter' && action.trim()) addMut.mutate() }} />
+      <div className="flex gap-2">
+        <button className="px-3 py-1 bg-ok text-white text-xs rounded hover:bg-ok disabled:opacity-50"
+                disabled={!action.trim() || addMut.isPending} onClick={() => addMut.mutate()}>
+          {addMut.isPending ? '添加中…' : '添加'}
+        </button>
+        <button className="px-3 py-1 border text-xs rounded hover:bg-gray-100" onClick={onDone}>取消</button>
+      </div>
+    </div>
+  )
+}
+
+// ── Editor root ─────────────────────────────────────────────────────────────
+
+export default function StepTreeEditor({ suiteId }: { suiteId: string }) {
+  const { data: nodes = [], isLoading } = useQuery({
+    queryKey: ['nodes', suiteId],
+    queryFn: () => fetchNodes(suiteId),
+  })
+  const tree = useMemo(() => buildTree(nodes), [nodes])
+  const [addingRoot, setAddingRoot] = useState(false)
+  const [dragId, setDragId] = useState<string | null>(null)
+
+  if (isLoading) return <div className="p-4 text-sm text-gray-400">加载步骤树…</div>
+
+  return (
+    <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
+      {tree.length === 0 && !addingRoot && (
+        <div className="px-4 py-6 text-sm text-gray-400 text-center">还没有步骤。点下面「+ 根步骤」开始。</div>
+      )}
+      {tree.map(n => (
+        <NodeRow key={n.id} node={n} depth={0} suiteId={suiteId} dragId={dragId} setDragId={setDragId} />
+      ))}
+      {addingRoot
+        ? <AddNodeForm suiteId={suiteId} parentId={null} indentPx={16} onDone={() => setAddingRoot(false)} />
+        : <button className="w-full text-left px-4 py-2.5 text-sm text-primary hover:bg-primary-soft border-t"
+                  onClick={() => setAddingRoot(true)}>+ 根步骤</button>}
+    </div>
+  )
+}
