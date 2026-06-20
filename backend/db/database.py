@@ -15,6 +15,9 @@ class Base(DeclarativeBase):
 
 
 async def init_db():
+    # Import models so every table is registered on Base.metadata before
+    # create_all runs — independent of import order at the call site.
+    from db import models  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -63,3 +66,12 @@ async def init_db():
             "suite_id": "VARCHAR",
             "task_keyword": "VARCHAR DEFAULT ''",
         })
+
+    # ── One-time migration: flat cases -> step-tree (idempotent per suite) ──
+    from db.migrate_step_tree import migrate_suite_to_step_tree
+    from db.models import TestSuite
+    from sqlalchemy import select as _select
+    async with AsyncSessionLocal() as _s:
+        suite_ids = (await _s.execute(_select(TestSuite.id))).scalars().all()
+        for sid in suite_ids:
+            await migrate_suite_to_step_tree(_s, sid)

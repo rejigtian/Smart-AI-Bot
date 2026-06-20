@@ -37,3 +37,31 @@ async def test_stepnode_parent_child(session):
     assert kid.reversible is True       # default
     assert kid.loop_task is False       # default
     assert kid.expected == ""           # default
+
+
+from db.models import TestCase, TestRun, TestResult
+from db.migrate_step_tree import migrate_suite_to_step_tree
+
+
+@pytest.mark.asyncio
+async def test_migrate_flat_cases_to_tree(session):
+    suite = TestSuite(name="s", source_format="manual")
+    session.add(suite); await session.flush()
+    c1 = TestCase(suite_id=suite.id, path="登录 > 答题", expected="完成", order=0)
+    c2 = TestCase(suite_id=suite.id, path="登录 > 设置", expected="打开", order=1)
+    session.add_all([c1, c2]); await session.flush()
+    run = TestRun(suite_id=suite.id, device_id="d"); session.add(run); await session.flush()
+    res = TestResult(run_id=run.id, case_id=c1.id, status="pass")
+    session.add(res); await session.commit()
+
+    created = await migrate_suite_to_step_tree(session, suite.id)
+    assert created == 3                      # 登录, 答题, 设置 (登录 shared)
+    nodes = (await session.execute(select(StepNode).where(StepNode.suite_id == suite.id))).scalars().all()
+    assert len(nodes) == 3
+    answer = next(n for n in nodes if n.action == "答题")
+    await session.refresh(res)
+    assert res.case_id == answer.id          # result repointed to final node
+
+    # Idempotent: running again creates nothing.
+    again = await migrate_suite_to_step_tree(session, suite.id)
+    assert again == 0
