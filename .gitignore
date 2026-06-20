@@ -28,6 +28,10 @@ frontend/dist/
 # Claude Code
 .claude/
 
+# Brainstorming / design specs — internal process artifacts, kept local only.
+# Genuine architecture changes get reflected in docs/agent-architecture.md instead.
+docs/superpowers/
+
 # Build artifacts
 backend/build/
 android/**/build/
