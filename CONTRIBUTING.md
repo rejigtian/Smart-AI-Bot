@@ -52,7 +52,7 @@ For bug reports and feature requests, use the issue templates — they prompt fo
 ## Pull request guidelines
 
 - **One concern per PR.** A bug fix and an unrelated refactor should be two PRs.
-- **Tests pass.** Run `pytest` in `backend/` if you touched backend code; `npm run build` in `frontend/` if you touched frontend.
+- **Tests pass.** Install dev deps once with `pip install -r requirements-dev.txt`, then run `pytest` in `backend/` if you touched backend code; `npm run build` in `frontend/` if you touched frontend.
 - **Commit message style:** lowercase verb + concise summary. Example:
   - `fix: agent retries forever when device offline`
   - `feat: add Excel test case import`
