@@ -270,6 +270,26 @@ async def quick_run(req: QuickRunRequest, db: AsyncSession = Depends(get_db)):
     return await _run_out(run, db)
 
 
+@router.post("/tree", response_model=RunOut, status_code=201)
+async def create_tree_run(req: StartRunRequest, db: AsyncSession = Depends(get_db)):
+    """Run a suite's step-tree as a DFS over its leaf cases."""
+    conn = connected_devices.get(req.device_id)
+    if conn is None or not conn.is_connected:
+        raise HTTPException(status_code=400, detail=f"Device {req.device_id} is not connected")
+    from core.test_runner import node_targets_for_suite, start_tree_run
+    targets = await node_targets_for_suite(db, req.suite_id)
+    if not targets:
+        raise HTTPException(status_code=404, detail="Suite has no step-tree nodes")
+    run = TestRun(suite_id=req.suite_id, device_id=req.device_id,
+                  provider=req.provider, model=req.model, status="pending")
+    db.add(run); await db.flush()
+    for t in targets:
+        db.add(TestResult(run_id=run.id, case_id=t.node_id, status="pending"))
+    await db.commit(); await db.refresh(run)
+    await start_tree_run(run.id, max_steps=req.max_steps)
+    return await _run_out(run, db)
+
+
 # ── Run Comparison (must be before /{run_id} to avoid route shadowing) ──────
 
 class CompareItem(BaseModel):

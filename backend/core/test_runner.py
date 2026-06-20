@@ -25,10 +25,11 @@ from core.run_memory import (
     task_keyword_for,
 )
 from core.run_recorder import RunRecorder
+from core.step_tree import NodeRow, dfs_run_targets, flatten_chain
 from core.test_agent import CaseResult, TestCaseAgent
 from core.test_parser import Step, TestCaseData
 from db.database import AsyncSessionLocal
-from db.models import TestCase, TestResult, TestRun, TestStepLog
+from db.models import StepNode, TestCase, TestResult, TestRun, TestStepLog
 from ws.portal_ws import connected_devices
 
 logger = logging.getLogger(__name__)
@@ -274,6 +275,150 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
                 .values(status="done", finished_at=datetime.utcnow()))
             await session.commit()
         await emit(f"\nBatch complete: {passed} passed, {failed} failed, {errored} error(s), {skipped} skipped")
+
+    except asyncio.CancelledError:
+        await emit("⛔ Run cancelled by user")
+        async with AsyncSessionLocal() as session:
+            await session.execute(update(TestRun).where(TestRun.id == run_id)
+                .values(status="cancelled", finished_at=datetime.utcnow()))
+            await session.commit()
+    finally:
+        await recorder.stop()
+        await state.finish()
+        active_runs.pop(run_id, None)
+
+
+async def node_targets_for_suite(session, suite_id: str) -> list:
+    """Load a suite's StepNode rows and return DFS RunTargets (leaf chains)."""
+    rows = (await session.execute(
+        select(StepNode).where(StepNode.suite_id == suite_id)
+    )).scalars().all()
+    node_rows = [
+        NodeRow(id=r.id, parent_id=r.parent_id, action=r.action,
+                expected=r.expected or "", order=r.order)
+        for r in rows
+    ]
+    return dfs_run_targets(node_rows)
+
+
+async def start_tree_run(run_id: str, max_steps: int = 20) -> None:
+    state = RunState()
+    active_runs[run_id] = state
+    state.task = asyncio.create_task(execute_tree_run(run_id, state, max_steps))
+
+
+async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20) -> None:
+    """Run a suite's step-tree as a DFS over leaf targets in one session.
+
+    Leaves come out in DFS order so a shared prefix is navigated once; the agent
+    is told to use the page stack to backtrack to the divergence point between
+    consecutive leaves (Phase 1: back-navigation only).
+    """
+    async def emit(msg: str) -> None:
+        logger.info("[tree:%s] %s", run_id, msg)
+        await state.emit(msg)
+
+    passed = failed = errored = skipped = 0
+    recorder = RunRecorder(run_id)
+    try:
+        async with AsyncSessionLocal() as session:
+            run_row = await session.get(TestRun, run_id)
+            if not run_row:
+                await emit("ERROR: run not found"); return
+            device_id, provider, model = run_row.device_id, run_row.provider, run_row.model
+            suite_id = run_row.suite_id
+            targets = await node_targets_for_suite(session, suite_id)
+            res = await session.execute(select(TestResult).where(TestResult.run_id == run_id))
+            result_rows = {r.case_id: r for r in res.scalars().all()}
+
+        conn = connected_devices.get(device_id)
+        if conn is None or not conn.is_connected:
+            await emit(f"ERROR: Device {device_id} is not connected"); return
+        device = WebSocketDevice(device_id)
+        _apply_aws_env()
+        api_key, api_base = _load_api_key(provider), _load_api_base(provider)
+        v_provider, v_model, v_key, v_base = _load_verifier_settings()
+        fallbacks = _load_fallback_chain(provider, model)
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(update(TestRun).where(TestRun.id == run_id).values(status="running"))
+            await session.commit()
+
+        await emit(f"Tree run: {len(targets)} leaf case(s) · DFS · model = {provider}/{model}")
+        if await recorder.start():
+            await emit("Screen recording started (ADB)")
+
+        async def log_cb(m: str) -> None:
+            await emit(m)
+
+        prev_path = ""
+        for idx, target in enumerate(targets):
+            flat = flatten_chain(target.chain)
+            await emit(f"\n[{idx + 1}/{len(targets)}] {flat.path} → {flat.expected or '(执行成功即通过)'}")
+            prev_line = f"The previous case targeted: {prev_path}\n" if prev_path else ""
+            goal = (
+                f"This is case {idx + 1}/{len(targets)} in a DFS run on the SAME app — do NOT restart the app.\n"
+                f"{prev_line}"
+                "You are likely already on or near the target from the previous case — read 'Page stack' in "
+                "[Device State] and press back to the point where this case diverges, then do ONLY the remaining steps.\n"
+                f"STEPS: {flat.path}\n"
+                f"VERIFY: {flat.expected or '(no explicit expectation — completing the steps successfully is a pass)'}"
+            )
+            prev_path = flat.path
+            case_data = TestCaseData(path=goal, expected=flat.expected, steps=list(flat.steps))
+
+            result_row = result_rows.get(target.node_id)
+            agent = TestCaseAgent(
+                device=device, provider=provider, model=model, api_key=api_key, api_base=api_base,
+                max_steps=max_steps, step_delay=1.0, log_callback=log_cb,
+                verifier_provider=v_provider, verifier_model=v_model,
+                verifier_api_key=v_key, verifier_api_base=v_base, fallbacks=fallbacks,
+                allow_subagents=False,
+            )
+            try:
+                case_result = await agent.run(case_data)
+            except asyncio.CancelledError:
+                if result_row:
+                    async with AsyncSessionLocal() as session:
+                        await session.execute(update(TestResult).where(TestResult.id == result_row.id)
+                            .values(status="error", reason="Run cancelled", finished_at=datetime.utcnow()))
+                        await session.commit()
+                raise
+            except Exception as e:
+                case_result = CaseResult(status="error", reason=str(e), steps=0)
+
+            if result_row:
+                async with AsyncSessionLocal() as session:
+                    await session.execute(update(TestResult).where(TestResult.id == result_row.id).values(
+                        status=case_result.status, reason=case_result.reason, steps=case_result.steps,
+                        screenshot_b64=case_result.screenshot_b64, log=case_result.log,
+                        finished_at=datetime.utcnow(),
+                        action_history_json=json.dumps(case_result.action_history),
+                        total_tokens=case_result.total_tokens,
+                    ))
+                    for sl in case_result.step_logs:
+                        session.add(TestStepLog(
+                            result_id=result_row.id, step=sl.step, thought=sl.thought,
+                            action=sl.action, action_result=sl.action_result, screenshot_b64=sl.screenshot_b64,
+                            prompt_tokens=sl.prompt_tokens, completion_tokens=sl.completion_tokens,
+                            total_tokens=sl.total_tokens, perception_ms=sl.perception_ms,
+                            llm_ms=sl.llm_ms, action_ms=sl.action_ms,
+                            subgoal_index=sl.subgoal_index, subgoal_desc=sl.subgoal_desc or "",
+                        ))
+                    await session.commit()
+
+            icon = {"pass": "✅", "fail": "❌", "error": "💥", "skip": "⏭"}.get(case_result.status, "?")
+            await emit(f"  {icon} {case_result.status}: {case_result.reason}")
+            if case_result.status == "pass": passed += 1
+            elif case_result.status == "fail": failed += 1
+            elif case_result.status == "skip": skipped += 1
+            else: errored += 1
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(update(TestRun).where(TestRun.id == run_id)
+                .values(status="done", finished_at=datetime.utcnow()))
+            await session.commit()
+        await emit(f"\nTree run complete: {passed} passed, {failed} failed, {errored} error(s), {skipped} skipped")
 
     except asyncio.CancelledError:
         await emit("⛔ Run cancelled by user")
