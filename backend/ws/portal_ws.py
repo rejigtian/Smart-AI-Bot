@@ -139,7 +139,16 @@ def _handle_message(conn: DeviceConnection, raw: str):
     if future is None or future.done():
         return
 
-    if "result" in msg:
+    # Portal reports failures as {"status": "error", "result": "<message>"} —
+    # NOT as a JSON-RPC "error" field. Honour the status flag first, otherwise a
+    # device-side error string is delivered as a successful result and crashes
+    # downstream (e.g. base64-decoding "Screenshot failed — …").
+    if msg.get("status") == "error":
+        err = msg.get("result") or msg.get("error") or "device reported an error"
+        if isinstance(err, dict):
+            err = err.get("message", str(err))
+        future.set_exception(RuntimeError(str(err)))
+    elif "result" in msg:
         future.set_result(msg["result"])
     elif "error" in msg:
         err = msg["error"]

@@ -183,7 +183,7 @@ class ApiHandler(private val context: android.content.Context) {
     suspend fun screenshot(): ApiResponse {
         val b64 = StateRepository.takeScreenshot()
         return if (b64.isNotEmpty()) ApiResponse.Text(b64)
-        else ApiResponse.Error("Screenshot failed — accessibility service must be running and screen must be on")
+        else ApiResponse.Error("Screenshot failed [${StateRepository.lastScreenshotFailure()}] — accessibility service must be running and screen must be on")
     }
 
     // ── Text input ────────────────────────────────────────────────────────────

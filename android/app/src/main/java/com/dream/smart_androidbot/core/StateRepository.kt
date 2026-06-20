@@ -23,6 +23,9 @@ object StateRepository {
     suspend fun takeScreenshot(hideOverlay: Boolean = false): String =
         service()?.takeScreenshotBase64(hideOverlay) ?: ""
 
+    fun lastScreenshotFailure(): String =
+        service()?.lastScreenshotFailure?.takeIf { it.isNotEmpty() } ?: "service unavailable"
+
     suspend fun inputText(text: String, clear: Boolean = false): Boolean =
         service()?.inputText(text, clear) ?: false
 

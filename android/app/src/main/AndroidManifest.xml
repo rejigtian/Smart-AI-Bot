@@ -21,6 +21,11 @@
     <!-- Query all installed packages (Android 11+) -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
+    <!-- MIUI / HyperOS gate the installed-app list behind this private permission
+         IN ADDITION to QUERY_ALL_PACKAGES — without it getInstalledApplications()
+         returns only the caller, so list_packages sees no other apps. -->
+    <uses-permission android:name="com.android.permission.GET_INSTALLED_APPS" />
+
     <!-- Allow stopping other apps before re-launch -->
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
 
@@ -62,6 +67,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- QR scanner locked to portrait (default zxing CaptureActivity is landscape) -->
+        <activity
+            android:name=".ui.PortraitCaptureActivity"
+            android:screenOrientation="portrait"
+            android:stateNotNeeded="true"
+            android:exported="false"
+            android:theme="@style/zxing_CaptureTheme" />
 
         <!-- Accessibility Service — core a11y, gestures, screenshot -->
         <service

@@ -97,6 +97,26 @@ object KeepAliveSetup {
         return openAppDetails(context)
     }
 
+    /**
+     * Open MIUI/HyperOS's per-app permission editor — the single native page
+     * holding the toggles the agent needs (后台弹出界面 / 读取应用列表 / 悬浮窗).
+     * These are MIUI-private permissions with no standard request API, so a
+     * deep-link is the only way to reach them. Returns false on non-MIUI ROMs.
+     */
+    fun openAppPermissionEditor(context: Context): Boolean {
+        val intent = Intent("miui.intent.action.APP_PERM_EDITOR")
+            .putExtra("extra_pkgname", context.packageName)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (intent.resolveActivity(context.packageManager) == null) return false
+        return try {
+            context.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "MIUI permission editor failed", e)
+            false
+        }
+    }
+
     /** Generic app-details settings page — always available. */
     fun openAppDetails(context: Context): Boolean {
         return try {

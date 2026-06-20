@@ -20,6 +20,7 @@ import com.dream.smart_androidbot.core.AccessibilityTreeBuilder
 import com.dream.smart_androidbot.input.AgentKeyboardIME
 import com.dream.smart_androidbot.model.ElementNode
 import com.dream.smart_androidbot.model.PhoneState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
@@ -33,11 +34,23 @@ class AgentAccessibilityService : AccessibilityService() {
     companion object {
         private const val TAG = "AgentA11y"
 
+        // takeScreenshot() can transiently fail — most notably with
+        // ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT (3), the OS-enforced ~1s
+        // minimum gap between screenshots. Retry a few times before giving up.
+        private const val SCREENSHOT_MAX_ATTEMPTS = 3
+
         @Volatile
         private var instance: AgentAccessibilityService? = null
 
         fun getInstance(): AgentAccessibilityService? = instance
     }
+
+    // Reason the last screenshot attempt(s) failed (errorCode=N / timeout-12s /
+    // null-bitmap / processing-error). Surfaced to the server so a failure is
+    // diagnosable instead of a generic "screenshot failed".
+    @Volatile
+    var lastScreenshotFailure: String = ""
+        private set
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -251,50 +264,70 @@ class AgentAccessibilityService : AccessibilityService() {
     // ── Screenshot ────────────────────────────────────────────────────────────
 
     suspend fun takeScreenshotBase64(hideOverlay: Boolean = false): String {
-        Log.d(TAG, "takeScreenshot: requesting…")
-        val result = withTimeoutOrNull(12_000L) {
-            suspendCancellableCoroutine { cont ->
-                takeScreenshot(
-                    0,  // default display
-                    mainExecutor,
-                    object : TakeScreenshotCallback {
-                        override fun onSuccess(screenshotResult: ScreenshotResult) {
-                            try {
-                                val hardwareBuffer = screenshotResult.getHardwareBuffer()
-                                val colorSpace = screenshotResult.getColorSpace()
-                                val hardwareBitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace)
-                                hardwareBuffer.close()
-                                if (hardwareBitmap == null) {
-                                    Log.w(TAG, "takeScreenshot: hardwareBitmap is null")
+        repeat(SCREENSHOT_MAX_ATTEMPTS) { attempt ->
+            Log.d(TAG, "takeScreenshot: requesting… (attempt ${attempt + 1}/$SCREENSHOT_MAX_ATTEMPTS)")
+            // Tracks why THIS attempt failed; read after the coroutine resumes.
+            var failure = "unknown"
+            val result = withTimeoutOrNull(12_000L) {
+                suspendCancellableCoroutine { cont ->
+                    takeScreenshot(
+                        0,  // default display
+                        mainExecutor,
+                        object : TakeScreenshotCallback {
+                            override fun onSuccess(screenshotResult: ScreenshotResult) {
+                                try {
+                                    val hardwareBuffer = screenshotResult.getHardwareBuffer()
+                                    val colorSpace = screenshotResult.getColorSpace()
+                                    val hardwareBitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace)
+                                    hardwareBuffer.close()
+                                    if (hardwareBitmap == null) {
+                                        failure = "null-bitmap"
+                                        Log.w(TAG, "takeScreenshot: hardwareBitmap is null")
+                                        cont.resume("")
+                                        return
+                                    }
+                                    val softBitmap = hardwareBitmap.copy(Bitmap.Config.ARGB_8888, false)
+                                    hardwareBitmap.recycle()
+                                    val out = ByteArrayOutputStream()
+                                    softBitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
+                                    softBitmap.recycle()
+                                    val b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+                                    Log.d(TAG, "takeScreenshot: success ${out.size()} bytes")
+                                    cont.resume(b64)
+                                } catch (e: Exception) {
+                                    failure = "processing-error: ${e.message}"
+                                    Log.e(TAG, "takeScreenshot: processing error ${e.message}")
                                     cont.resume("")
-                                    return
                                 }
-                                val softBitmap = hardwareBitmap.copy(Bitmap.Config.ARGB_8888, false)
-                                hardwareBitmap.recycle()
-                                val out = ByteArrayOutputStream()
-                                softBitmap.compress(Bitmap.CompressFormat.JPEG, 75, out)
-                                softBitmap.recycle()
-                                val b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-                                Log.d(TAG, "takeScreenshot: success ${out.size()} bytes")
-                                cont.resume(b64)
-                            } catch (e: Exception) {
-                                Log.e(TAG, "takeScreenshot: processing error ${e.message}")
+                            }
+
+                            override fun onFailure(errorCode: Int) {
+                                failure = "errorCode=$errorCode"
+                                Log.w(TAG, "takeScreenshot: onFailure errorCode=$errorCode")
                                 cont.resume("")
                             }
                         }
-
-                        override fun onFailure(errorCode: Int) {
-                            Log.w(TAG, "takeScreenshot: onFailure errorCode=$errorCode")
-                            cont.resume("")
-                        }
-                    }
-                )
+                    )
+                }
+            }
+            if (!result.isNullOrEmpty()) {
+                lastScreenshotFailure = ""
+                return result
+            }
+            if (result == null) {
+                failure = "timeout-12s"
+                Log.w(TAG, "takeScreenshot: timed out (no callback in 12s)")
+            }
+            lastScreenshotFailure = failure
+            if (attempt < SCREENSHOT_MAX_ATTEMPTS - 1) {
+                // errorCode=3 is ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT — the
+                // OS needs ~1s between screenshots, so wait it out; otherwise a
+                // short backoff is enough for transient internal errors.
+                delay(if (failure == "errorCode=3") 1100L else 350L)
             }
         }
-        if (result == null) {
-            Log.w(TAG, "takeScreenshot: timed out (no callback in 12s)")
-        }
-        return result ?: ""
+        Log.w(TAG, "takeScreenshot: giving up after $SCREENSHOT_MAX_ATTEMPTS attempts ($lastScreenshotFailure)")
+        return ""
     }
 
     // ── Text input ────────────────────────────────────────────────────────────

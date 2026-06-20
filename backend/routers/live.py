@@ -76,8 +76,15 @@ async def _adb_jpeg(serial: str) -> bytes:
     return await asyncio.to_thread(_to_jpeg, raw)
 
 
+# The live preview is best-effort: reuse any device frame from the last ~2s
+# (typically one the agent just captured) rather than triggering a competing
+# device screenshot. This keeps the rate-limited accessibility screenshot for
+# the agent, which has priority.
+_LIVE_FRAME_MAX_AGE = 2.0
+
+
 async def _screenshot_jpeg(device_id: str) -> bytes:
-    raw = await WebSocketDevice(device_id).screenshot()
+    raw = await WebSocketDevice(device_id).screenshot(accept_cached_age=_LIVE_FRAME_MAX_AGE)
     return await asyncio.to_thread(_to_jpeg, raw)
 
 

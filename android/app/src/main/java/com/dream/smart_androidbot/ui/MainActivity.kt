@@ -33,10 +33,14 @@ class MainActivity : AppCompatActivity() {
     private val statusHandler = Handler(Looper.getMainLooper())
     private val statusRunnable = Runnable { refreshStatus() }
 
-    // Runtime permission request for POST_NOTIFICATIONS (Android 13+)
-    private val notificationPermLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { /* result doesn't block usage; foreground service still works */ }
+    // Runtime permissions requested on first launch. Requested as ONE batch —
+    // Android shows only one permission dialog at a time, so launching several
+    // single-permission requests back-to-back drops all but the first (the app
+    // list one then only appeared on the 2nd launch). RequestMultiplePermissions
+    // queues them so every prompt is shown in sequence on the first launch.
+    private val permsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { /* results don't block usage; everything degrades gracefully */ }
 
     // QR scanner (ZXing). The CaptureActivity handles the CAMERA runtime prompt.
     private val qrScanLauncher = registerForActivityResult(ScanContract()) { result ->
@@ -56,14 +60,30 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         config = ConfigManager.getInstance(this)
 
-        // Request POST_NOTIFICATIONS on Android 13+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                notificationPermLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-            }
+        // Request the runtime permissions we need, all in one batch (see
+        // permsLauncher) so every prompt shows on the first launch:
+        //  - POST_NOTIFICATIONS (Android 13+)
+        //  - GET_INSTALLED_APPS — the installed-app list; on MIUI/HyperOS this is
+        //    a runtime permission. Only added on ROMs that actually define it.
+        val wanted = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            wanted += android.Manifest.permission.POST_NOTIFICATIONS
         }
+        val installedAppsPerm = "com.android.permission.GET_INSTALLED_APPS"
+        val appListPermDefined = try {
+            packageManager.getPermissionInfo(installedAppsPerm, 0); true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
+        }
+        if (appListPermDefined &&
+            checkSelfPermission(installedAppsPerm) != PackageManager.PERMISSION_GRANTED
+        ) {
+            wanted += installedAppsPerm
+        }
+        if (wanted.isNotEmpty()) permsLauncher.launch(wanted.toTypedArray())
 
         // Populate config fields
         binding.editServerUrl.setText(config.serverUrl)
@@ -93,7 +113,8 @@ class MainActivity : AppCompatActivity() {
                 setDesiredBarcodeFormats(ScanOptions.QR_CODE)
                 setPrompt("对准 Web 设备页上的二维码")
                 setBeepEnabled(false)
-                setOrientationLocked(false)
+                setOrientationLocked(true)
+                setCaptureActivity(PortraitCaptureActivity::class.java)
             }
             qrScanLauncher.launch(options)
         }
@@ -165,17 +186,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateBackgroundCard() {
-        val unrestricted = KeepAliveSetup.isBatteryUnrestricted(this)
+        val battery = KeepAliveSetup.isBatteryUnrestricted(this)
         val overlay = KeepAliveSetup.canDrawOverlays(this)
-        // Green only when BOTH battery is unrestricted and the overlay (BAL)
-        // permission is granted; orange when something still needs the user.
-        val ok = unrestricted && overlay
+        val appList = canListApps()
+        fun mark(b: Boolean) = if (b) "✓" else "✗"
+        // Green only when every AUTO-DETECTABLE critical passes. 后台弹出界面 and
+        // 自启动 have no query API on MIUI, so they can't be verified here — they
+        // are flagged for manual confirmation rather than faked as done.
+        val ok = battery && overlay && appList
         setDotColor(binding.dotBackground, ok, warn = !ok)
-        binding.textBackgroundStatus.text = when {
-            ok -> "电池已豁免 ✓ 后台启动已授权 ✓ — 仍建议确认自启动已开"
-            !overlay -> "缺「悬浮窗/后台弹出界面」权限 — 否则后台无法启动 App，点「一键设置」"
-            else -> "未豁免 — 点「一键设置」防止后台被冻结"
-        }
+        binding.textBackgroundStatus.text =
+            "悬浮窗 ${mark(overlay)} · 省电豁免 ${mark(battery)} · 读取应用列表 ${mark(appList)}\n" +
+            "后台弹出界面 / 自启动：无法自动检测，请在权限页确认已开"
         binding.btnBackgroundSetup.text = if (ok) "再设置" else "一键设置"
     }
 
@@ -195,14 +217,14 @@ class MainActivity : AppCompatActivity() {
             ).show()
             return  // let the user finish this grant before jumping further
         }
-        // Step 3: jump into the OEM auto-start / background-management page.
-        val ok = KeepAliveSetup.openAutostartSettings(this)
-        Toast.makeText(
-            this,
-            if (ok) "请开启：自启动 + 后台弹出界面，省电策略设为「无限制」（后台弹出界面是后台启动 App 的关键）"
-            else "请在应用详情里开启：自启动、后台弹出界面、取消省电限制",
-            Toast.LENGTH_LONG,
-        ).show()
+        // Step 3: OEM auto-start page (keep-alive on boot).
+        KeepAliveSetup.openAutostartSettings(this)
+        // Step 4: on MIUI/HyperOS also open the per-app permission editor — its
+        // 后台弹出界面 / 读取应用列表 toggles are what let the agent launch apps
+        // and enumerate them; they have no standard request API. Opened last so
+        // it lands on top. No-op on non-MIUI ROMs.
+        KeepAliveSetup.openAppPermissionEditor(this)
+        Toast.makeText(this, "逐项开启后返回本页，卡片会显示每项状态", Toast.LENGTH_SHORT).show()
     }
 
     private fun updateAccessibilityCard() {
@@ -265,6 +287,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun isAccessibilityEnabled(): Boolean =
         AgentAccessibilityService.getInstance() != null
+
+    /** Functional check for the installed-app-list permission: if we can see any
+     *  package other than ourselves, enumeration works. On MIUI without the
+     *  「读取应用列表」grant, getInstalledApplications returns only this app. */
+    private fun canListApps(): Boolean = try {
+        packageManager.getInstalledApplications(0).any { it.packageName != packageName }
+    } catch (_: Exception) { false }
 
     private fun isImeEnabled(): Boolean = try {
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager

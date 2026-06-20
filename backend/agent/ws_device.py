@@ -5,6 +5,7 @@ All method names are the actual ActionDispatcher strings from Portal 0.6.5.
 A11y tree parsing/formatting lives in agent.perception — this module is
 purely the transport/action layer.
 """
+import asyncio
 import base64
 import logging
 import struct
@@ -14,6 +15,18 @@ from agent.perception import format_ui_state
 from ws.portal_ws import connected_devices, send_rpc
 
 logger = logging.getLogger(__name__)
+
+# Android's AccessibilityService.takeScreenshot is rate-limited by the OS to
+# ~1 call/sec (ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT). The agent and the
+# live-screen preview are two independent screenshot consumers — if they both
+# hit the device inside the same ~1s window, one fails. So device screenshots
+# are serialized per device with a minimum gap, and the last frame is cached so
+# the (best-effort) live preview can reuse the agent's fresh frames instead of
+# issuing competing device calls. The agent always gets a freshly captured
+# frame; the preview yields to it.
+_MIN_SCREENSHOT_GAP = 1.1
+_screenshot_cache: Dict[str, Tuple[float, bytes]] = {}
+_screenshot_locks: Dict[str, asyncio.Lock] = {}
 
 _KEY_CODES = {
     "back": 4, "home": 3, "recent": 187,
@@ -177,7 +190,34 @@ class WebSocketDevice:
             return w, h
         return 0, 0
 
-    async def screenshot(self) -> bytes:
+    async def screenshot(self, accept_cached_age: float = 0.0) -> bytes:
+        """Capture the device screen.
+
+        accept_cached_age > 0 lets a best-effort caller (the live preview) reuse
+        the most recent frame if it is younger than that many seconds, avoiding
+        a competing device screenshot. The agent leaves it at 0 and always gets
+        a freshly captured frame — it has priority; the preview yields to it.
+        """
+        loop = asyncio.get_event_loop()
+        ts, cached = _screenshot_cache.get(self.device_id, (0.0, b""))
+        if accept_cached_age and cached and (loop.time() - ts) <= accept_cached_age:
+            return cached
+
+        lock = _screenshot_locks.setdefault(self.device_id, asyncio.Lock())
+        async with lock:
+            # Another caller may have refreshed the cache while we waited.
+            ts, cached = _screenshot_cache.get(self.device_id, (0.0, b""))
+            if accept_cached_age and cached and (loop.time() - ts) <= accept_cached_age:
+                return cached
+            # Respect the OS minimum interval between device screenshots.
+            gap = loop.time() - ts
+            if cached and gap < _MIN_SCREENSHOT_GAP:
+                await asyncio.sleep(_MIN_SCREENSHOT_GAP - gap)
+            img = await self._capture_screenshot()
+            _screenshot_cache[self.device_id] = (loop.time(), img)
+            return img
+
+    async def _capture_screenshot(self) -> bytes:
         # Longer timeout — Unity/Canvas pages can take 10s+ to yield to a11y
         result = await self._rpc("screenshot", {"hideOverlay": True}, timeout=25.0)
         if isinstance(result, str):
@@ -186,7 +226,26 @@ class WebSocketDevice:
             b64 = result.get("data") or result.get("image") or result.get("screenshot", "")
         else:
             b64 = str(result)
-        img = base64.b64decode(b64)
+        try:
+            img = base64.b64decode(b64)
+        except ValueError as e:
+            # The Portal always emits pure-ASCII base64 (Base64.NO_WRAP). If we
+            # see non-ASCII or invalid padding here, the screenshot frame was
+            # corrupted in transit (the "torn image" symptom). Capture what the
+            # bad payload looks like so we can tell truncation vs interleaving
+            # vs non-base64 text apart, then surface a retryable error so the
+            # caller re-requests a fresh frame instead of crashing the case.
+            bad_idx = next((i for i, ch in enumerate(b64) if ord(ch) > 127), -1)
+            ctx = ""
+            if bad_idx >= 0:
+                lo, hi = max(0, bad_idx - 24), bad_idx + 24
+                ctx = repr(b64[lo:hi])
+            logger.warning(
+                "screenshot frame corrupt (%s): len=%d head=%r tail=%r "
+                "first_non_ascii_at=%d ctx=%s",
+                e, len(b64), b64[:48], b64[-48:], bad_idx, ctx,
+            )
+            raise RuntimeError(f"corrupt screenshot frame: {e}") from e
         w, h = self._png_dimensions(img)
         if w and h:
             self._screenshot_width = w
