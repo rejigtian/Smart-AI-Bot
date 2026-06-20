@@ -5,12 +5,12 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.test_parser import parse_file
 from db.database import AsyncSessionLocal
-from db.models import LessonLearned, TestCase, TestResult, TestRun, TestStepLog, TestSuite
+from db.models import LessonLearned, StepNode, TestCase, TestResult, TestRun, TestStepLog, TestSuite
 
 router = APIRouter(prefix="/api/suites", tags=["suites"])
 
@@ -48,6 +48,37 @@ class CaseIn(BaseModel):
     # unchanged on update (callers that send a partial body, e.g. rename, must
     # not silently reset it).
     loop_task: Optional[bool] = None
+
+
+# ── Step-tree node schemas ─────────────────────────────────────────────────────
+
+class NodeOut(BaseModel):
+    id: str
+    suite_id: str
+    parent_id: Optional[str] = None
+    action: str
+    expected: str = ""
+    order: int = 0
+    reversible: bool = True
+    loop_task: bool = False
+
+
+class NodeIn(BaseModel):
+    parent_id: Optional[str] = None
+    action: str
+    expected: str = ""
+    loop_task: bool = False
+
+
+class NodePatch(BaseModel):
+    action: Optional[str] = None
+    expected: Optional[str] = None
+    loop_task: Optional[bool] = None
+    reversible: Optional[bool] = None
+
+
+class MoveIn(BaseModel):
+    new_parent_id: Optional[str] = None
 
 
 @router.get("", response_model=List[SuiteOut])
@@ -221,6 +252,107 @@ async def delete_case(suite_id: str, case_id: str, db: AsyncSession = Depends(ge
     if not case or case.suite_id != suite_id:
         raise HTTPException(status_code=404, detail="Case not found")
     await db.delete(case)
+    await db.commit()
+
+
+# ── Step-tree node CRUD ────────────────────────────────────────────────────────
+
+def _node_out(n: StepNode) -> NodeOut:
+    return NodeOut(
+        id=n.id, suite_id=n.suite_id, parent_id=n.parent_id, action=n.action,
+        expected=n.expected or "", order=n.order, reversible=n.reversible,
+        loop_task=n.loop_task,
+    )
+
+
+@router.get("/{suite_id}/nodes", response_model=List[NodeOut])
+async def list_nodes(suite_id: str, db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(
+        select(StepNode).where(StepNode.suite_id == suite_id)
+        .order_by(StepNode.order)
+    )).scalars().all()
+    return [_node_out(n) for n in rows]
+
+
+@router.post("/{suite_id}/nodes", response_model=NodeOut, status_code=201)
+async def add_node(suite_id: str, body: NodeIn, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(
+        select(func.max(StepNode.order))
+        .where(StepNode.suite_id == suite_id, StepNode.parent_id == body.parent_id)
+    )
+    max_order = res.scalar()
+    node = StepNode(
+        suite_id=suite_id, parent_id=body.parent_id, action=body.action,
+        expected=body.expected or "", loop_task=body.loop_task,
+        order=(max_order + 1) if max_order is not None else 0,
+    )
+    db.add(node)
+    await db.commit()
+    await db.refresh(node)
+    return _node_out(node)
+
+
+@router.put("/{suite_id}/nodes/{node_id}", response_model=NodeOut)
+async def update_node(suite_id: str, node_id: str, body: NodePatch,
+                      db: AsyncSession = Depends(get_db)):
+    node = await db.get(StepNode, node_id)
+    if not node or node.suite_id != suite_id:
+        raise HTTPException(status_code=404, detail="Node not found")
+    if body.action is not None:
+        node.action = body.action
+    if body.expected is not None:
+        node.expected = body.expected
+    if body.loop_task is not None:
+        node.loop_task = body.loop_task
+    if body.reversible is not None:
+        node.reversible = body.reversible
+    await db.commit()
+    return _node_out(node)
+
+
+async def _descendant_ids(db: AsyncSession, node_id: str) -> set:
+    """All descendants of node_id (exclusive) — for cycle guard on move."""
+    out, frontier = set(), [node_id]
+    while frontier:
+        kids = (await db.execute(
+            select(StepNode.id).where(StepNode.parent_id.in_(frontier))
+        )).scalars().all()
+        kids = [k for k in kids if k not in out]
+        out.update(kids)
+        frontier = kids
+    return out
+
+
+@router.post("/{suite_id}/nodes/{node_id}/move", response_model=NodeOut)
+async def move_node(suite_id: str, node_id: str, body: MoveIn,
+                    db: AsyncSession = Depends(get_db)):
+    node = await db.get(StepNode, node_id)
+    if not node or node.suite_id != suite_id:
+        raise HTTPException(status_code=404, detail="Node not found")
+    if body.new_parent_id == node_id or body.new_parent_id in await _descendant_ids(db, node_id):
+        raise HTTPException(status_code=400, detail="Cannot move a node under itself")
+    res = await db.execute(
+        select(func.max(StepNode.order))
+        .where(StepNode.suite_id == suite_id, StepNode.parent_id == body.new_parent_id)
+    )
+    max_order = res.scalar()
+    node.parent_id = body.new_parent_id
+    node.order = (max_order + 1) if max_order is not None else 0
+    await db.commit()
+    return _node_out(node)
+
+
+@router.delete("/{suite_id}/nodes/{node_id}", status_code=204)
+async def delete_node(suite_id: str, node_id: str, db: AsyncSession = Depends(get_db)):
+    node = await db.get(StepNode, node_id)
+    if not node or node.suite_id != suite_id:
+        raise HTTPException(status_code=404, detail="Node not found")
+    # Promote children to the deleted node's parent.
+    await db.execute(
+        update(StepNode).where(StepNode.parent_id == node_id)
+        .values(parent_id=node.parent_id)
+    )
+    await db.delete(node)
     await db.commit()
 
 
