@@ -26,6 +26,7 @@ export interface TestCase {
   path: string
   expected: string
   parameters: string
+  loop_task: boolean
 }
 
 export interface Run {
@@ -229,7 +230,7 @@ export const compareRuns = (a: string, b: string) =>
 
 // ── Case CRUD ─────────────────────────────────────────────────────────────────
 
-export const addCase = (suiteId: string, data: { path: string; expected: string }) =>
+export const addCase = (suiteId: string, data: { path: string; expected: string; loop_task?: boolean }) =>
   api.post<TestCase>(`/suites/${suiteId}/cases`, data).then(r => r.data)
 
 // ── Per-case run history (memory hygiene) ─────────────────────────────────────
@@ -257,7 +258,11 @@ export const deleteCaseResult = (suiteId: string, caseId: string, resultId: stri
 export const purgeCaseResults = (suiteId: string, caseId: string, scope: 'all' | 'failed') =>
   api.delete<{ deleted: number }>(`/suites/${suiteId}/cases/${caseId}/results`, { params: { scope } })
     .then(r => r.data)
-export const updateCase = (suiteId: string, caseId: string, data: { path: string; expected: string }) =>
+export const updateCase = (
+  suiteId: string,
+  caseId: string,
+  data: { path: string; expected: string; loop_task?: boolean },
+) =>
   api.put<TestCase>(`/suites/${suiteId}/cases/${caseId}`, data).then(r => r.data)
 export const deleteCase = (suiteId: string, caseId: string) =>
   api.delete(`/suites/${suiteId}/cases/${caseId}`)
