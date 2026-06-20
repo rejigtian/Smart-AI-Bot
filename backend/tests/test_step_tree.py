@@ -106,3 +106,26 @@ def test_dfs_targets_respects_sibling_order_and_multiple_roots():
 
 def test_dfs_targets_empty():
     assert dfs_run_targets([]) == []
+
+
+from core.step_tree import chain_to_node
+
+
+def test_chain_to_node_walks_up_to_root():
+    nodes = [
+        NodeRow("n1", None, "登录", order=0),
+        NodeRow("n2", "n1", "我的页面", order=0),
+        NodeRow("n3", "n2", "答题", expected="完成", order=0),
+        NodeRow("n4", "n2", "设置", order=1),
+    ]
+    chain = chain_to_node(nodes, "n2")          # an intermediate (non-leaf) node
+    assert [c.action for c in chain] == ["登录", "我的页面"]
+    assert chain[-1].expected == ""
+
+    full = chain_to_node(nodes, "n3")
+    assert [c.action for c in full] == ["登录", "我的页面", "答题"]
+    assert full[-1].expected == "完成"
+
+
+def test_chain_to_node_unknown_id():
+    assert chain_to_node([NodeRow("n1", None, "A")], "missing") == []

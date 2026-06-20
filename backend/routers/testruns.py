@@ -290,6 +290,34 @@ async def create_tree_run(req: StartRunRequest, db: AsyncSession = Depends(get_d
     return await _run_out(run, db)
 
 
+class NodeRunRequest(BaseModel):
+    suite_id: str
+    device_id: str
+    node_id: str
+    provider: str = "openai"
+    model: str = "gpt-4o"
+    max_steps: int = 20
+
+
+@router.post("/node", response_model=RunOut, status_code=201)
+async def create_node_run(req: NodeRunRequest, db: AsyncSession = Depends(get_db)):
+    """Run a single step-tree node: execute its root→node chain."""
+    conn = connected_devices.get(req.device_id)
+    if conn is None or not conn.is_connected:
+        raise HTTPException(status_code=400, detail=f"Device {req.device_id} is not connected")
+    from core.test_runner import node_targets_for_suite, start_tree_run
+    targets = await node_targets_for_suite(db, req.suite_id, req.node_id)
+    if not targets:
+        raise HTTPException(status_code=404, detail="Node not found in this suite's step-tree")
+    run = TestRun(suite_id=req.suite_id, device_id=req.device_id,
+                  provider=req.provider, model=req.model, status="pending")
+    db.add(run); await db.flush()
+    db.add(TestResult(run_id=run.id, case_id=req.node_id, status="pending"))
+    await db.commit(); await db.refresh(run)
+    await start_tree_run(run.id, max_steps=req.max_steps, only_node_id=req.node_id)
+    return await _run_out(run, db)
+
+
 # ── Run Comparison (must be before /{run_id} to avoid route shadowing) ──────
 
 class CompareItem(BaseModel):

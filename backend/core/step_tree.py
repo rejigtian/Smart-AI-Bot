@@ -141,3 +141,21 @@ def dfs_run_targets(nodes: List[NodeRow]) -> List[RunTarget]:
     for root in children.get(None, []):
         walk(root, [])
     return targets
+
+
+def chain_to_node(nodes: List[NodeRow], node_id: str) -> List[ChainItem]:
+    """Build the root→node ChainItem list for a single (possibly non-leaf) node.
+
+    Returns [] if node_id is unknown. Walks parent pointers up to the root.
+    """
+    by_id = {n.id: n for n in nodes}
+    if node_id not in by_id:
+        return []
+    rev: List[ChainItem] = []
+    cur: NodeRow | None = by_id[node_id]
+    seen: set = set()
+    while cur is not None and cur.id not in seen:
+        seen.add(cur.id)
+        rev.append(ChainItem(cur.action, cur.expected))
+        cur = by_id.get(cur.parent_id) if cur.parent_id else None
+    return list(reversed(rev))

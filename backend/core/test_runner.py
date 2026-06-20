@@ -25,7 +25,7 @@ from core.run_memory import (
     task_keyword_for,
 )
 from core.run_recorder import RunRecorder
-from core.step_tree import NodeRow, dfs_run_targets, flatten_chain
+from core.step_tree import NodeRow, RunTarget, chain_to_node, dfs_run_targets, flatten_chain
 from core.test_agent import CaseResult, TestCaseAgent
 from core.test_parser import Step, TestCaseData
 from db.database import AsyncSessionLocal
@@ -288,8 +288,13 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
         active_runs.pop(run_id, None)
 
 
-async def node_targets_for_suite(session, suite_id: str) -> list:
-    """Load a suite's StepNode rows and return DFS RunTargets (leaf chains)."""
+async def node_targets_for_suite(session, suite_id: str, only_node_id: str = None) -> list:
+    """Return RunTargets for a suite's step-tree.
+
+    Default: one target per leaf, in DFS order. When `only_node_id` is given,
+    return a single target = the root→that-node chain (the node may be a
+    non-leaf), or [] if the node is unknown.
+    """
     rows = (await session.execute(
         select(StepNode).where(StepNode.suite_id == suite_id)
     )).scalars().all()
@@ -298,21 +303,26 @@ async def node_targets_for_suite(session, suite_id: str) -> list:
                 expected=r.expected or "", order=r.order)
         for r in rows
     ]
+    if only_node_id is not None:
+        chain = chain_to_node(node_rows, only_node_id)
+        return [RunTarget(node_id=only_node_id, chain=chain)] if chain else []
     return dfs_run_targets(node_rows)
 
 
-async def start_tree_run(run_id: str, max_steps: int = 20) -> None:
+async def start_tree_run(run_id: str, max_steps: int = 20, only_node_id: str = None) -> None:
     state = RunState()
     active_runs[run_id] = state
-    state.task = asyncio.create_task(execute_tree_run(run_id, state, max_steps))
+    state.task = asyncio.create_task(execute_tree_run(run_id, state, max_steps, only_node_id))
 
 
-async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20) -> None:
+async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20,
+                           only_node_id: str = None) -> None:
     """Run a suite's step-tree as a DFS over leaf targets in one session.
 
     Leaves come out in DFS order so a shared prefix is navigated once; the agent
     is told to use the page stack to backtrack to the divergence point between
-    consecutive leaves (Phase 1: back-navigation only).
+    consecutive leaves (Phase 1: back-navigation only). When `only_node_id` is
+    set, a single node's root→node chain is run instead of the whole tree.
     """
     async def emit(msg: str) -> None:
         logger.info("[tree:%s] %s", run_id, msg)
@@ -327,7 +337,7 @@ async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20) 
                 await emit("ERROR: run not found"); return
             device_id, provider, model = run_row.device_id, run_row.provider, run_row.model
             suite_id = run_row.suite_id
-            targets = await node_targets_for_suite(session, suite_id)
+            targets = await node_targets_for_suite(session, suite_id, only_node_id)
             res = await session.execute(select(TestResult).where(TestResult.run_id == run_id))
             result_rows = {r.case_id: r for r in res.scalars().all()}
 
