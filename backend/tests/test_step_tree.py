@@ -129,3 +129,19 @@ def test_chain_to_node_walks_up_to_root():
 
 def test_chain_to_node_unknown_id():
     assert chain_to_node([NodeRow("n1", None, "A")], "missing") == []
+
+
+from core.step_tree import clone_chain
+
+
+def test_clone_chain_builds_linear_line():
+    head = clone_chain([ChainItem("登录"), ChainItem("语音", expected="进入语音页")])
+    assert head.action == "登录"
+    assert len(head.children) == 1
+    leaf = head.children[0]
+    assert leaf.action == "语音" and leaf.expected == "进入语音页"
+    assert leaf.children == []
+
+
+def test_clone_chain_empty():
+    assert clone_chain([]) is None

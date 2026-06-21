@@ -159,3 +159,21 @@ def chain_to_node(nodes: List[NodeRow], node_id: str) -> List[ChainItem]:
         rev.append(ChainItem(cur.action, cur.expected))
         cur = by_id.get(cur.parent_id) if cur.parent_id else None
     return list(reversed(rev))
+
+
+def clone_chain(items: List[ChainItem]) -> "BuiltNode | None":
+    """Build a fresh linear BuiltNode line from a chain (for snapshot reuse).
+
+    Each item becomes one node nested under the previous; expected is carried,
+    loop_task/source_case_id are not (a reused flow is a fresh case).
+    """
+    head: "BuiltNode | None" = None
+    tail: "BuiltNode | None" = None
+    for it in items:
+        node = BuiltNode(action=it.action, expected=it.expected)
+        if head is None:
+            head = tail = node
+        else:
+            tail.children.append(node)
+            tail = node
+    return head
