@@ -425,6 +425,13 @@ async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20,
             case_data = TestCaseData(path=goal, expected=flat.expected, steps=[])
 
             result_row = result_rows.get(target.node_id)
+            # Mark this case running so the live result tree shows where we are
+            # (TestResult otherwise stays 'pending' until the case finishes).
+            if result_row:
+                async with AsyncSessionLocal() as session:
+                    await session.execute(update(TestResult).where(TestResult.id == result_row.id)
+                        .values(status="running", started_at=datetime.utcnow()))
+                    await session.commit()
             agent = TestCaseAgent(
                 device=device, provider=provider, model=model, api_key=api_key, api_base=api_base,
                 max_steps=max_steps, step_delay=1.0, log_callback=log_cb,

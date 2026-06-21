@@ -29,16 +29,11 @@ const BADGE: Record<string, string> = {
   pending: 'bg-gray-100 text-gray-400',
 }
 
-// Effective status of a node = its own result, else aggregate of descendants.
-function aggStatus(node: TNode, byNode: Map<string, TestResult>): string | null {
-  const own = byNode.get(node.id)?.status || null
-  const kids = node.children.map(c => aggStatus(c, byNode)).filter(Boolean) as string[]
-  const all = [own, ...kids].filter(Boolean) as string[]
-  if (all.length === 0) return null
-  if (all.some(s => s === 'fail' || s === 'error')) return 'fail'
-  if (all.some(s => s === 'running' || s === 'pending')) return 'running'
-  if (all.some(s => s === 'pass')) return 'pass'
-  return all[0]
+// Does this subtree contain a failed result? (surface it on ancestors)
+function hasFailure(node: TNode, byNode: Map<string, TestResult>): boolean {
+  const own = byNode.get(node.id)?.status
+  if (own === 'fail' || own === 'error') return true
+  return node.children.some(c => hasFailure(c, byNode))
 }
 
 function ResultRow({
@@ -48,7 +43,9 @@ function ResultRow({
   selectedId?: string; onSelect: (r: TestResult) => void; onStar: (id: string) => void
 }) {
   const own = byNode.get(node.id)
-  const status = own?.status ?? aggStatus(node, byNode)
+  // Only nodes with their OWN result show a status badge. Intermediate nodes
+  // show nothing, except a small ⚠ when a descendant failed (easy to locate).
+  const failedBelow = !own && hasFailure(node, byNode)
   const selected = own && selectedId === own.id
   return (
     <>
@@ -64,10 +61,13 @@ function ResultRow({
             <span className="ml-2 align-middle px-1.5 py-0.5 text-[10px] rounded bg-blue-100 text-blue-700">期望: {node.expected}</span>
           )}
         </div>
-        {status && (
-          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${own ? (BADGE[status] || 'bg-gray-100 text-gray-500') : 'bg-gray-50 text-gray-400'}`}>
-            {own ? status : `经过·${status}`}
+        {own && (
+          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${BADGE[own.status] || 'bg-gray-100 text-gray-500'}`}>
+            {own.status}
           </span>
+        )}
+        {failedBelow && (
+          <span className="text-[11px] text-red-500 flex-shrink-0" title="此分支下有失败用例">⚠</span>
         )}
         {own && (
           <button

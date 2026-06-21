@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchRun, fetchResults, fetchSteps, cancelRun, startRun, starResult, fetchDevices, TestResult, StepLog } from '../lib/api'
+import { fetchRun, fetchResults, fetchSteps, cancelRun, runTree, starResult, fetchDevices, TestResult, StepLog } from '../lib/api'
 import StepTreeResultView from '../components/StepTreeResultView'
 import LivePanel from '../components/LivePanel'
 import ScreenshotReplay from '../components/ScreenshotReplay'
@@ -81,15 +81,20 @@ export default function RunDetail() {
   })
 
   const rerunMut = useMutation({
-    mutationFn: () => startRun({
+    mutationFn: () => runTree({
       suite_id: run!.suite_id,
       device_id: run!.device_id,
       provider: run!.provider,
       model: run!.model,
+      max_steps: 20,
     }),
     onSuccess: (newRun) => {
       queryClient.invalidateQueries({ queryKey: ['runs'] })
       navigate(`/runs/${newRun.id}`)
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || String(e)
+      alert(`重新运行失败: ${msg}`)
     },
   })
 
