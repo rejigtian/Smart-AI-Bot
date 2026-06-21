@@ -320,6 +320,15 @@ export const searchNodes = (q: string) =>
 export const copyNode = (suiteId: string, sourceNodeId: string, parentId: string | null) =>
   api.post<StepNode[]>(`/suites/${suiteId}/nodes/copy`, { source_node_id: sourceNodeId, parent_id: parentId }).then(r => r.data)
 
+export const fetchNodeResults = (nodeId: string) =>
+  api.get<CaseResult[]>(`/nodes/${nodeId}/results`).then(r => r.data)
+
+export const deleteNodeResult = (nodeId: string, resultId: string) =>
+  api.delete(`/nodes/${nodeId}/results/${resultId}`)
+
+export const purgeNodeResults = (nodeId: string, scope: 'all' | 'failed') =>
+  api.delete<{ deleted: number }>(`/nodes/${nodeId}/results`, { params: { scope } }).then(r => r.data)
+
 // ── Settings ─────────────────────────────────────────────────────────────────
 
 export const fetchSettings = () => api.get<Settings>('/settings').then(r => r.data)

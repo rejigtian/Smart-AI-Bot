@@ -3,7 +3,70 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchNodes, addNode, updateNode, deleteNode, moveNode, StepNode,
   searchNodes, copyNode, NodeSearchHit,
+  fetchNodeResults, deleteNodeResult, purgeNodeResults, CaseResult,
 } from '../lib/api'
+
+const STATUS_STYLE: Record<string, string> = {
+  pass: 'bg-green-100 text-green-700',
+  fail: 'bg-red-100 text-red-700',
+  error: 'bg-orange-100 text-orange-700',
+  skip: 'bg-gray-100 text-gray-500',
+}
+
+function NodeHistory({ nodeId, indentPx }: { nodeId: string; indentPx: number }) {
+  const qc = useQueryClient()
+  const { data: results = [], isLoading } = useQuery({
+    queryKey: ['node-results', nodeId],
+    queryFn: () => fetchNodeResults(nodeId),
+  })
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['node-results', nodeId] })
+  const delOne = useMutation({ mutationFn: (rid: string) => deleteNodeResult(nodeId, rid), onSuccess: invalidate })
+  const purge = useMutation({ mutationFn: (scope: 'all' | 'failed') => purgeNodeResults(nodeId, scope), onSuccess: invalidate })
+  const failedCount = results.filter((r: CaseResult) => r.status === 'fail' || r.status === 'error').length
+
+  return (
+    <div className="bg-canvas-cool border-t text-xs" style={{ paddingLeft: indentPx, paddingRight: 16 }}>
+      <div className="flex items-center justify-between py-2 pr-1">
+        <span className="text-ink-faint">
+          {isLoading ? '加载中…' : `${results.length} 条运行记录`}
+          {results.length > 0 && <span className="ml-1">· 加 ★ 或最近一次通过会作为下次运行的参考</span>}
+        </span>
+        {results.length > 0 && (
+          <span className="flex gap-1.5 flex-shrink-0">
+            <button className="px-2 py-0.5 border border-orange-200 text-orange-600 rounded hover:bg-orange-50 disabled:opacity-40"
+                    disabled={failedCount === 0 || purge.isPending}
+                    onClick={() => { if (confirm(`删除这个节点的 ${failedCount} 条失败记录？`)) purge.mutate('failed') }}>
+              删失败 {failedCount > 0 ? `(${failedCount})` : ''}
+            </button>
+            <button className="px-2 py-0.5 border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-40"
+                    disabled={purge.isPending}
+                    onClick={() => { if (confirm('清空这个节点的全部运行记录？相关记忆也会一并删除。')) purge.mutate('all') }}>
+              清空
+            </button>
+          </span>
+        )}
+      </div>
+      {!isLoading && results.length === 0 && <div className="pb-2 text-ink-faint">还没有运行记录。</div>}
+      {results.map((r: CaseResult) => (
+        <div key={r.id} className="flex items-center gap-2 py-1.5 border-t border-hairline">
+          <span className={`px-1.5 py-0.5 rounded font-medium ${STATUS_STYLE[r.status] || 'bg-gray-100 text-gray-500'}`}>{r.status}</span>
+          {r.is_starred && <span title="已加星：作为下次运行参考">★</span>}
+          <span className="text-ink-mute whitespace-nowrap">
+            {new Date(r.created_at).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </span>
+          <span className="text-ink-faint truncate flex-1 font-mono">{r.model || r.provider}</span>
+          <span className="text-ink-faint whitespace-nowrap">{r.steps} 步 · {r.total_tokens} tok</span>
+          <button className="px-1.5 py-0.5 border border-red-200 text-red-600 rounded hover:bg-red-50 flex-shrink-0 disabled:opacity-40"
+                  disabled={delOne.isPending}
+                  onClick={() => { if (confirm('删除这条运行记录？')) delOne.mutate(r.id) }}
+                  title="删除这条记录（及由它产生的记忆）">
+            🗑
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 // ── Tree assembly from the flat parent_id list ──────────────────────────────
 
@@ -39,6 +102,7 @@ function NodeRow({
   const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
   const [reusing, setReusing] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [dropHover, setDropHover] = useState(false)
   const [action, setAction] = useState(node.action)
   const [expected, setExpected] = useState(node.expected)
@@ -132,6 +196,10 @@ function NodeRow({
           )}
           <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setAdding(true)}>+ 步骤</button>
           <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setReusing(true)}>复用</button>
+          <button className={`px-2 py-0.5 text-xs border rounded hover:bg-gray-100 ${showHistory ? 'bg-gray-100' : ''}`}
+                  onClick={() => setShowHistory(v => !v)} title="查看 / 清理这个节点的历史运行记录（影响下次运行的记忆）">
+            记录{showHistory ? ' ▾' : ' ▸'}
+          </button>
           <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setEditing(true)}>编辑</button>
           <button className="px-2 py-0.5 text-xs border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-50"
                   disabled={delMut.isPending}
@@ -148,6 +216,7 @@ function NodeRow({
         <ReusePicker suiteId={suiteId} parentId={node.id} indentPx={16 + indent + 18}
                      onDone={() => setReusing(false)} />
       )}
+      {showHistory && <NodeHistory nodeId={node.id} indentPx={16 + indent + 18} />}
       {node.children.map(c => (
         <NodeRow key={c.id} node={c} depth={depth + 1} suiteId={suiteId}
                  dragId={dragId} setDragId={setDragId} onRunNode={onRunNode} />
