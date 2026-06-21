@@ -235,6 +235,7 @@ export default function StepTreeEditor({ suiteId, onRunNode }: { suiteId: string
   const { data: nodes = [], isLoading } = useQuery({
     queryKey: ['nodes', suiteId],
     queryFn: () => fetchNodes(suiteId),
+    retry: 1,  // fail fast instead of the default 3 retries if the route errors
   })
   const tree = useMemo(() => buildTree(nodes), [nodes])
   const [addingRoot, setAddingRoot] = useState(false)

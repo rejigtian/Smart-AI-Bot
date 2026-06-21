@@ -131,6 +131,17 @@ async def test_node_move_and_cycle_guard(client, suite_id):
 
 
 @pytest.mark.asyncio
+async def test_list_nodes_self_heals_unmigrated_suite(client, session):
+    # A suite with legacy cases but no StepNode rows (e.g. created after startup).
+    suite = TestSuite(name="late", source_format="manual"); session.add(suite); await session.flush()
+    session.add(TestCase(suite_id=suite.id, path="登录 > 答题", expected="完成", order=0))
+    await session.commit()
+
+    nodes = (await client.get(f"/api/suites/{suite.id}/nodes")).json()
+    assert {n["action"] for n in nodes} == {"登录", "答题"}   # migrated on demand
+
+
+@pytest.mark.asyncio
 async def test_node_search_across_suites(client, session):
     s1 = TestSuite(name="A", source_format="manual"); s2 = TestSuite(name="B", source_format="manual")
     session.add_all([s1, s2]); await session.flush()

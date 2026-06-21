@@ -281,10 +281,19 @@ def _node_out(n: StepNode) -> NodeOut:
 
 @router.get("/{suite_id}/nodes", response_model=List[NodeOut])
 async def list_nodes(suite_id: str, db: AsyncSession = Depends(get_db)):
-    rows = (await db.execute(
-        select(StepNode).where(StepNode.suite_id == suite_id)
-        .order_by(StepNode.order)
-    )).scalars().all()
+    async def _load():
+        return (await db.execute(
+            select(StepNode).where(StepNode.suite_id == suite_id)
+            .order_by(StepNode.order)
+        )).scalars().all()
+
+    rows = await _load()
+    if not rows:
+        # Self-heal: a suite created/imported after startup (the init_db migration
+        # only ran over suites that existed then). Migrate its legacy cases now.
+        from db.migrate_step_tree import migrate_suite_to_step_tree
+        if await migrate_suite_to_step_tree(db, suite_id):
+            rows = await _load()
     return [_node_out(n) for n in rows]
 
 
