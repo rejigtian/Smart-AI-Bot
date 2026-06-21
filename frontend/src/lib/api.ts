@@ -20,15 +20,6 @@ export interface Suite {
   created_at: string
 }
 
-export interface TestCase {
-  id: string
-  order: number
-  path: string
-  expected: string
-  parameters: string
-  loop_task: boolean
-}
-
 export interface Run {
   id: string
   suite_id: string
@@ -140,8 +131,6 @@ export const fetchDeviceCapabilities = (id: string) =>
 
 export const fetchSuites = () => api.get<Suite[]>('/suites').then(r => r.data)
 export const fetchSuite = (id: string) => api.get<Suite>(`/suites/${id}`).then(r => r.data)
-export const fetchCases = (suiteId: string) =>
-  api.get<TestCase[]>(`/suites/${suiteId}/cases`).then(r => r.data)
 export const uploadSuite = (file: File) => {
   const form = new FormData()
   form.append('file', file)
@@ -180,15 +169,6 @@ export const startRun = (body: {
   max_retries?: number
   isolated?: boolean
 }) => api.post<Run>('/runs', body).then(r => r.data)
-export const batchRun = (body: {
-  suite_id: string
-  device_id: string
-  provider: string
-  model: string
-  max_steps?: number
-  base_path: string
-  case_ids: string[]
-}) => api.post<Run>('/runs/batch', body).then(r => r.data)
 export const quickRun = (body: {
   goal: string
   expected?: string
@@ -228,12 +208,7 @@ export interface CompareOut {
 export const compareRuns = (a: string, b: string) =>
   api.get<CompareOut>('/runs/compare', { params: { a, b } }).then(r => r.data)
 
-// ── Case CRUD ─────────────────────────────────────────────────────────────────
-
-export const addCase = (suiteId: string, data: { path: string; expected: string; loop_task?: boolean }) =>
-  api.post<TestCase>(`/suites/${suiteId}/cases`, data).then(r => r.data)
-
-// ── Per-case run history (memory hygiene) ─────────────────────────────────────
+// ── Run records (per node — memory hygiene) ───────────────────────────────────
 
 export interface CaseResult {
   id: string
@@ -248,24 +223,6 @@ export interface CaseResult {
   created_at: string
   finished_at: string | null
 }
-
-export const fetchCaseResults = (suiteId: string, caseId: string) =>
-  api.get<CaseResult[]>(`/suites/${suiteId}/cases/${caseId}/results`).then(r => r.data)
-
-export const deleteCaseResult = (suiteId: string, caseId: string, resultId: string) =>
-  api.delete(`/suites/${suiteId}/cases/${caseId}/results/${resultId}`)
-
-export const purgeCaseResults = (suiteId: string, caseId: string, scope: 'all' | 'failed') =>
-  api.delete<{ deleted: number }>(`/suites/${suiteId}/cases/${caseId}/results`, { params: { scope } })
-    .then(r => r.data)
-export const updateCase = (
-  suiteId: string,
-  caseId: string,
-  data: { path: string; expected: string; loop_task?: boolean },
-) =>
-  api.put<TestCase>(`/suites/${suiteId}/cases/${caseId}`, data).then(r => r.data)
-export const deleteCase = (suiteId: string, caseId: string) =>
-  api.delete(`/suites/${suiteId}/cases/${caseId}`)
 
 // ── Step-tree nodes ───────────────────────────────────────────────────────────
 
