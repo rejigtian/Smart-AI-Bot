@@ -91,13 +91,17 @@ function buildTree(nodes: StepNode[]): TreeNode[] {
 // ── One editable node row ───────────────────────────────────────────────────
 
 function NodeRow({
-  node, depth, suiteId, dragId, setDragId, onRunNode, collapsed, onToggleCollapse,
+  node, depth, suiteId, dragId, setDragId, onRunNode, collapsed, onToggleCollapse, usage, onShowUsage,
 }: {
   node: TreeNode; depth: number; suiteId: string
   dragId: string | null; setDragId: (id: string | null) => void
   onRunNode?: (nodeId: string) => void
   collapsed: Set<string>; onToggleCollapse: (id: string) => void
+  usage?: Record<string, { links: number; copies: number }>
+  onShowUsage?: (nodeId: string) => void
 }) {
+  const u = usage?.[node.id]
+  const reuseCount = u ? u.links + u.copies : 0
   const qc = useQueryClient()
   const invalidate = () => qc.invalidateQueries({ queryKey: ['nodes', suiteId] })
   const [editing, setEditing] = useState(false)
@@ -204,6 +208,15 @@ function NodeRow({
               {!node.reversible && <span className="ml-2 align-middle text-[10px]" title="不可回退">🔒</span>}
             </div>
           )}
+          {reuseCount > 0 && (
+            <button
+              className="mt-0.5 text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 hover:bg-purple-200"
+              onClick={e => { e.stopPropagation(); onShowUsage?.(node.id) }}
+              title="被其他用例复用（链接/拷贝）的次数 — 点击查看在哪用"
+            >
+              🔁 被复用 {reuseCount}{u && u.links ? `（${u.links} 链接）` : ''}
+            </button>
+          )}
         </div>
         <div className="flex gap-1 flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
           {onRunNode && (
@@ -241,7 +254,8 @@ function NodeRow({
       {!collapsed.has(node.id) && node.children.map(c => (
         <NodeRow key={c.id} node={c} depth={depth + 1} suiteId={suiteId}
                  dragId={dragId} setDragId={setDragId} onRunNode={onRunNode}
-                 collapsed={collapsed} onToggleCollapse={onToggleCollapse} />
+                 collapsed={collapsed} onToggleCollapse={onToggleCollapse}
+                 usage={usage} onShowUsage={onShowUsage} />
       ))}
     </>
   )
@@ -335,7 +349,12 @@ function AddNodeForm({
 
 // ── Editor root ─────────────────────────────────────────────────────────────
 
-export default function StepTreeEditor({ suiteId, onRunNode }: { suiteId: string; onRunNode?: (nodeId: string) => void }) {
+export default function StepTreeEditor({ suiteId, onRunNode, usage, onShowUsage }: {
+  suiteId: string
+  onRunNode?: (nodeId: string) => void
+  usage?: Record<string, { links: number; copies: number }>
+  onShowUsage?: (nodeId: string) => void
+}) {
   const { data: nodes = [], isLoading } = useQuery({
     queryKey: ['nodes', suiteId],
     queryFn: () => fetchNodes(suiteId),
@@ -375,7 +394,8 @@ export default function StepTreeEditor({ suiteId, onRunNode }: { suiteId: string
       )}
       {tree.map(n => (
         <NodeRow key={n.id} node={n} depth={0} suiteId={suiteId} dragId={dragId} setDragId={setDragId}
-                 onRunNode={onRunNode} collapsed={collapsed} onToggleCollapse={onToggleCollapse} />
+                 onRunNode={onRunNode} collapsed={collapsed} onToggleCollapse={onToggleCollapse}
+                 usage={usage} onShowUsage={onShowUsage} />
       ))}
       {reusingRoot && (
         <ReusePicker suiteId={suiteId} parentId={null} indentPx={16} onDone={() => setReusingRoot(false)} />

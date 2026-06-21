@@ -8,12 +8,14 @@ import Settings from './pages/Settings'
 import QuickRun from './pages/QuickRun'
 import Recorder from './pages/Recorder'
 import RunCompare from './pages/RunCompare'
+import Library from './pages/Library'
 
 const NAV_LINKS = [
   { to: '/', label: '设备', icon: '📱', end: true },
   { to: '/quick', label: '快速任务', icon: '⚡', end: false },
   { to: '/recorder', label: '录制', icon: '⏺', end: false },
   { to: '/suites', label: '测试套件', icon: '🧪', end: false },
+  { to: '/library', label: '用例库', icon: '📚', end: false },
   { to: '/runs', label: '运行记录', icon: '▶', end: true },
   { to: '/runs/compare', label: '对比', icon: '⇄', end: false },
   { to: '/settings', label: '设置', icon: '⚙', end: false },
@@ -59,6 +61,7 @@ export default function App() {
               <Route path="/recorder" element={<Recorder />} />
               <Route path="/suites" element={<Suites />} />
               <Route path="/suites/:suiteId" element={<SuiteDetail />} />
+              <Route path="/library" element={<Library />} />
               <Route path="/runs" element={<Runs />} />
               <Route path="/runs/compare" element={<RunCompare />} />
               <Route path="/runs/:runId" element={<RunDetail />} />

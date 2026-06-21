@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.step_tree import ChainItem, NodeRow, chain_to_node, clone_chain
@@ -687,3 +687,49 @@ async def delete_node_results(node_id: str, scope: str = "all", db: AsyncSession
         stmt = stmt.where(TestResult.status.in_(["fail", "error"]))
     rows = (await db.execute(stmt)).scalars().all()
     return PurgeOut(deleted=await _purge_results(list(rows), db))
+
+
+# ── Reuse stats (case library) ────────────────────────────────────────────────
+
+class NodeUsageRef(BaseModel):
+    node_id: str
+    suite_id: str
+    suite_name: str
+    path: str
+    kind: str   # "link" | "copy"
+
+
+@nodes_router.get("/usage")
+async def nodes_usage(db: AsyncSession = Depends(get_db)):
+    """Map node_id -> {links, copies}: how many nodes reference it (live link)
+    or were snapshot-copied from it. The de-facto reusable components."""
+    rows = (await db.execute(select(StepNode.ref_id, StepNode.source_id))).all()
+    counts: dict = {}
+    for ref_id, source_id in rows:
+        if ref_id:
+            counts.setdefault(ref_id, {"links": 0, "copies": 0})["links"] += 1
+        if source_id:
+            counts.setdefault(source_id, {"links": 0, "copies": 0})["copies"] += 1
+    return counts
+
+
+@nodes_router.get("/{node_id}/usage", response_model=List[NodeUsageRef])
+async def node_usage(node_id: str, db: AsyncSession = Depends(get_db)):
+    """Where a node is reused: nodes that live-link to it or were copied from it."""
+    refs = (await db.execute(
+        select(StepNode).where(or_(StepNode.ref_id == node_id, StepNode.source_id == node_id))
+    )).scalars().all()
+    if not refs:
+        return []
+    all_rows = (await db.execute(select(StepNode))).scalars().all()
+    node_rows = [NodeRow(id=a.id, parent_id=a.parent_id, action=a.action,
+                         expected=a.expected or "", order=a.order) for a in all_rows]
+    suites = {s.id: s.name for s in (await db.execute(select(TestSuite))).scalars().all()}
+    out: List[NodeUsageRef] = []
+    for r in refs:
+        path = " > ".join(c.action for c in chain_to_node(node_rows, r.id))
+        out.append(NodeUsageRef(
+            node_id=r.id, suite_id=r.suite_id, suite_name=suites.get(r.suite_id, ""),
+            path=path, kind="link" if r.ref_id == node_id else "copy",
+        ))
+    return out

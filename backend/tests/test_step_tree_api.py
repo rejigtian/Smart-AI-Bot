@@ -182,6 +182,23 @@ async def test_run_results_resolve_node_ids(client, session):
 
 
 @pytest.mark.asyncio
+async def test_node_usage_stats(client, session):
+    suite = TestSuite(name="s", source_format="manual"); session.add(suite); await session.flush()
+    src = StepNode(suite_id=suite.id, parent_id=None, action="登录", order=0); session.add(src); await session.flush()
+    # one live link + one snapshot copy referencing src
+    session.add(StepNode(suite_id=suite.id, parent_id=None, action="🔗", order=1, ref_id=src.id))
+    session.add(StepNode(suite_id=suite.id, parent_id=None, action="登录(copy)", order=2, source_id=src.id))
+    await session.commit()
+
+    counts = (await client.get("/api/nodes/usage")).json()
+    assert counts[src.id] == {"links": 1, "copies": 1}
+
+    where = (await client.get(f"/api/nodes/{src.id}/usage")).json()
+    assert {w["kind"] for w in where} == {"link", "copy"}
+    assert len(where) == 2
+
+
+@pytest.mark.asyncio
 async def test_node_search_across_suites(client, session):
     s1 = TestSuite(name="A", source_format="manual"); s2 = TestSuite(name="B", source_format="manual")
     session.add_all([s1, s2]); await session.flush()

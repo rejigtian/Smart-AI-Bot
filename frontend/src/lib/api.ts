@@ -288,6 +288,20 @@ export const deleteNodeResult = (nodeId: string, resultId: string) =>
 export const purgeNodeResults = (nodeId: string, scope: 'all' | 'failed') =>
   api.delete<{ deleted: number }>(`/nodes/${nodeId}/results`, { params: { scope } }).then(r => r.data)
 
+export interface NodeUsageRef {
+  node_id: string
+  suite_id: string
+  suite_name: string
+  path: string
+  kind: 'link' | 'copy'
+}
+
+export const fetchNodeUsageCounts = () =>
+  api.get<Record<string, { links: number; copies: number }>>('/nodes/usage').then(r => r.data)
+
+export const fetchNodeUsage = (nodeId: string) =>
+  api.get<NodeUsageRef[]>(`/nodes/${nodeId}/usage`).then(r => r.data)
+
 // ── Settings ─────────────────────────────────────────────────────────────────
 
 export const fetchSettings = () => api.get<Settings>('/settings').then(r => r.data)
