@@ -43,10 +43,11 @@ function NodeRow({
   const [action, setAction] = useState(node.action)
   const [expected, setExpected] = useState(node.expected)
   const [loopTask, setLoopTask] = useState(node.loop_task)
+  const [reversible, setReversible] = useState(node.reversible)
   const indent = depth * 18
 
   const saveMut = useMutation({
-    mutationFn: () => updateNode(suiteId, node.id, { action, expected, loop_task: loopTask }),
+    mutationFn: () => updateNode(suiteId, node.id, { action, expected, loop_task: loopTask, reversible }),
     onSuccess: () => { invalidate(); setEditing(false) },
   })
   const delMut = useMutation({
@@ -71,9 +72,13 @@ function NodeRow({
         <div className="text-xs text-gray-500 mb-1">期望 / Expected（留空 = 执行成功即通过）</div>
         <input className="w-full border rounded px-2 py-1 text-sm mb-2"
                value={expected} onChange={e => setExpected(e.target.value)} />
-        <label className="flex items-center gap-2 mb-3 text-xs text-gray-600 cursor-pointer">
+        <label className="flex items-center gap-2 mb-2 text-xs text-gray-600 cursor-pointer">
           <input type="checkbox" checked={loopTask} onChange={e => setLoopTask(e.target.checked)} />
           循环任务（重复同一动作的任务，跳过卡死兜底）
+        </label>
+        <label className="flex items-center gap-2 mb-3 text-xs text-gray-600 cursor-pointer">
+          <input type="checkbox" checked={!reversible} onChange={e => setReversible(!e.target.checked)} />
+          不可回退（提交后 back 撤不掉，分支切换时从头重放而非按返回）
         </label>
         <div className="flex gap-2">
           <button className="px-3 py-1 bg-primary text-white text-xs rounded hover:bg-primary-deep disabled:opacity-50"
@@ -82,7 +87,7 @@ function NodeRow({
             {saveMut.isPending ? '保存中…' : '保存'}
           </button>
           <button className="px-3 py-1 border text-xs rounded hover:bg-gray-100"
-                  onClick={() => { setAction(node.action); setExpected(node.expected); setLoopTask(node.loop_task); setEditing(false) }}>
+                  onClick={() => { setAction(node.action); setExpected(node.expected); setLoopTask(node.loop_task); setReversible(node.reversible); setEditing(false) }}>
             取消
           </button>
         </div>

@@ -25,7 +25,7 @@ from core.run_memory import (
     task_keyword_for,
 )
 from core.run_recorder import RunRecorder
-from core.step_tree import NodeRow, RunTarget, chain_to_node, dfs_run_targets, flatten_chain
+from core.step_tree import NodeRow, RunTarget, backtrack_plan, chain_to_node, dfs_run_targets, flatten_chain
 from core.test_agent import CaseResult, TestCaseAgent
 from core.test_parser import Step, TestCaseData
 from db.database import AsyncSessionLocal
@@ -338,6 +338,15 @@ async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20,
             device_id, provider, model = run_row.device_id, run_row.provider, run_row.model
             suite_id = run_row.suite_id
             targets = await node_targets_for_suite(session, suite_id, only_node_id)
+            # Flat node rows (incl. reversible) for backtrack planning between branches.
+            _rows = (await session.execute(
+                select(StepNode).where(StepNode.suite_id == suite_id)
+            )).scalars().all()
+            node_rows = [
+                NodeRow(id=r.id, parent_id=r.parent_id, action=r.action,
+                        expected=r.expected or "", order=r.order, reversible=r.reversible)
+                for r in _rows
+            ]
             res = await session.execute(select(TestResult).where(TestResult.run_id == run_id))
             result_rows = {r.case_id: r for r in res.scalars().all()}
 
@@ -361,20 +370,35 @@ async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20,
         async def log_cb(m: str) -> None:
             await emit(m)
 
-        prev_path = ""
+        prev_node_id = None
         for idx, target in enumerate(targets):
             flat = flatten_chain(target.chain)
-            await emit(f"\n[{idx + 1}/{len(targets)}] {flat.path} → {flat.expected or '(执行成功即通过)'}")
-            prev_line = f"The previous case targeted: {prev_path}\n" if prev_path else ""
+            plan = backtrack_plan(node_rows, prev_node_id, target.node_id)
+            await emit(f"\n[{idx + 1}/{len(targets)}] {flat.path} → {flat.expected or '(执行成功即通过)'}  · {plan.kind}")
+            if plan.kind == "fresh":
+                transition = (
+                    "This is the first case. Start from the app's home/launch state and perform every step in order.\n"
+                )
+            elif plan.kind == "back":
+                transition = (
+                    "Continue on the SAME app — do NOT restart it. You are likely already on or near the target "
+                    "from the previous case. Read 'Page stack' in [Device State] and press back to the point where "
+                    "this case diverges, then do ONLY the remaining steps. If you are NOT sure you returned to the "
+                    "correct divergence point, restart from the app home and perform ALL steps — never run on a wrong screen.\n"
+                )
+            else:  # replay
+                transition = (
+                    "⚠ The previous case committed an IRREVERSIBLE action (e.g. a one-time choice/submit), so pressing "
+                    "back will NOT restore a clean state. Restart from the app's home/launch state and perform ALL of "
+                    "this case's steps from the beginning. Do not assume your current position.\n"
+                )
             goal = (
-                f"This is case {idx + 1}/{len(targets)} in a DFS run on the SAME app — do NOT restart the app.\n"
-                f"{prev_line}"
-                "You are likely already on or near the target from the previous case — read 'Page stack' in "
-                "[Device State] and press back to the point where this case diverges, then do ONLY the remaining steps.\n"
+                f"This is case {idx + 1}/{len(targets)} in a DFS run.\n"
+                f"{transition}"
                 f"STEPS: {flat.path}\n"
                 f"VERIFY: {flat.expected or '(no explicit expectation — completing the steps successfully is a pass)'}"
             )
-            prev_path = flat.path
+            prev_node_id = target.node_id
             case_data = TestCaseData(path=goal, expected=flat.expected, steps=list(flat.steps))
 
             result_row = result_rows.get(target.node_id)
