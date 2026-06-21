@@ -375,42 +375,52 @@ async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20,
             flat = flatten_chain(target.chain)
             plan = backtrack_plan(node_rows, prev_node_id, target.node_id)
             await emit(f"\n[{idx + 1}/{len(targets)}] {flat.path} → {flat.expected or '(执行成功即通过)'}  · {plan.kind}")
-            if plan.kind == "fresh":
-                transition = (
-                    "This is the first case. Start from the app's home/launch state and perform every step in order.\n"
+
+            def _num(items, start=1):
+                out = []
+                for i, it in enumerate(items, start):
+                    s = f"{i}. {it.action}"
+                    if it.expected:
+                        s += f"（期望: {it.expected}）"
+                    out.append(s)
+                return "\n".join(out)
+
+            # For a 'back' transition, only the steps AFTER the divergence point
+            # (LCA) are new — instruct the agent to return there and perform just
+            # those, and FORBID passing on a stale screen left by the previous case.
+            lca_idx = -1
+            if plan.kind == "back" and plan.to_node_id:
+                for i, it in enumerate(target.chain):
+                    if it.node_id == plan.to_node_id:
+                        lca_idx = i
+                        break
+
+            if plan.kind == "back" and lca_idx >= 0 and lca_idx < len(target.chain) - 1:
+                lca_action = target.chain[lca_idx].action
+                suffix = target.chain[lca_idx + 1:]
+                goal = (
+                    f"This is case {idx + 1}/{len(targets)} in a DFS run — continue on the SAME app, do NOT restart it.\n"
+                    f"上一条用例和本条在「{lca_action}」处分叉。请用 [Device State] 的 Page stack 判断位置，"
+                    f"按返回键回到「{lca_action}」这一步所在的页面，然后从那里开始，按顺序执行下面这些**剩余步骤**：\n"
+                    f"{_num(suffix)}\n"
+                    f"⚠ 必须真正执行上面的操作。即使当前画面看起来已经满足期望（上一条用例可能把你留在了那个页面），"
+                    f"也不能直接判通过——本条用例测试的是**不同的操作路径**，你必须实际走一遍这些步骤。\n"
+                    f"最终验证：{flat.expected or '完成上述步骤即视为通过'}"
                 )
-            elif plan.kind == "back":
-                transition = (
-                    "Continue on the SAME app — do NOT restart it. You are likely already on or near the target "
-                    "from the previous case. Read 'Page stack' in [Device State] and press back to the point where "
-                    "this case diverges, then do ONLY the remaining steps. If you are NOT sure you returned to the "
-                    "correct divergence point, restart from the app home and perform ALL steps — never run on a wrong screen.\n"
+            else:
+                if plan.kind == "replay":
+                    head = (
+                        "⚠ 上一条用例提交了不可回退的操作（如一次性选择/提交），按返回键无法恢复干净状态。"
+                        "请从 App 首页/启动态重新开始，完整执行本条用例的全部步骤，不要假设当前位置。\n"
+                    )
+                else:  # fresh
+                    head = "这是第一条用例。从 App 首页/启动态开始，按顺序执行全部步骤。\n"
+                goal = (
+                    f"This is case {idx + 1}/{len(targets)} in a DFS run.\n"
+                    f"{head}"
+                    f"按顺序完成以下步骤：\n{_num(target.chain)}\n"
+                    f"最终验证：{flat.expected or '完成上述全部步骤即视为通过（无额外结果验证）'}"
                 )
-            else:  # replay
-                transition = (
-                    "⚠ The previous case committed an IRREVERSIBLE action (e.g. a one-time choice/submit), so pressing "
-                    "back will NOT restore a clean state. Restart from the app's home/launch state and perform ALL of "
-                    "this case's steps from the beginning. Do not assume your current position.\n"
-                )
-            # Full chain as a numbered narrative so the single agent performs
-            # EVERY action (navigation nodes included), not just the ones with an
-            # expected. Per-step expecteds are inline guidance; the final node's
-            # expected is the hard pass/fail. (steps=[] -> single-agent mode, so
-            # the agent reads this goal incl. the transition instructions; strict
-            # checkpoint mode would ignore the narrative.)
-            step_lines = []
-            for i, item in enumerate(target.chain, 1):
-                line = f"{i}. {item.action}"
-                if item.expected:
-                    line += f"（期望: {item.expected}）"
-                step_lines.append(line)
-            steps_text = "\n".join(step_lines)
-            goal = (
-                f"This is case {idx + 1}/{len(targets)} in a DFS run.\n"
-                f"{transition}"
-                f"按顺序完成以下步骤：\n{steps_text}\n"
-                f"最终验证：{flat.expected or '完成上述全部步骤即视为通过（无额外结果验证）'}"
-            )
             prev_node_id = target.node_id
             case_data = TestCaseData(path=goal, expected=flat.expected, steps=[])
 

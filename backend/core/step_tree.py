@@ -17,6 +17,7 @@ class ChainItem:
     """One node on a root→target path: an action with an optional expected."""
     action: str
     expected: str = ""
+    node_id: str = ""
 
 
 def flatten_chain(chain: List[ChainItem]) -> TestCaseData:
@@ -131,7 +132,7 @@ def dfs_run_targets(nodes: List[NodeRow]) -> List[RunTarget]:
     targets: List[RunTarget] = []
 
     def walk(node: NodeRow, prefix: List[ChainItem]) -> None:
-        chain = prefix + [ChainItem(node.action, node.expected)]
+        chain = prefix + [ChainItem(node.action, node.expected, node_id=node.id)]
         kids = children.get(node.id, [])
         if not kids:
             targets.append(RunTarget(node_id=node.id, chain=chain))
@@ -157,7 +158,7 @@ def chain_to_node(nodes: List[NodeRow], node_id: str) -> List[ChainItem]:
     seen: set = set()
     while cur is not None and cur.id not in seen:
         seen.add(cur.id)
-        rev.append(ChainItem(cur.action, cur.expected))
+        rev.append(ChainItem(cur.action, cur.expected, node_id=cur.id))
         cur = by_id.get(cur.parent_id) if cur.parent_id else None
     return list(reversed(rev))
 
