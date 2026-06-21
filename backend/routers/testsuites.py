@@ -781,7 +781,8 @@ class NodeContextOut(BaseModel):
     path: str
     parent: Optional[NodeBrief] = None
     children: List[NodeBrief]
-    referrers: List[NodeUsageRef]
+    referrers: List[NodeUsageRef]   # who reuses THIS node (incoming)
+    reuses: Optional[NodeUsageRef] = None  # what THIS node reuses (outgoing source)
 
 
 @nodes_router.get("/{node_id}/context", response_model=NodeContextOut)
@@ -806,11 +807,21 @@ async def node_context(node_id: str, db: AsyncSession = Depends(get_db)):
         )
         for a in all_rows if a.ref_id == node_id or a.source_id == node_id
     ]
+    # What THIS node reuses (its own outgoing source): live link (ref_id) or copy (source_id).
+    reuses = None
+    src_id = node.ref_id or node.source_id
+    if src_id and src_id in by_id:
+        s = by_id[src_id]
+        reuses = NodeUsageRef(
+            node_id=s.id, suite_id=s.suite_id, suite_name=suites.get(s.suite_id, ""),
+            path=" > ".join(c.action for c in chain_to_node(node_rows, s.id)),
+            kind="link" if node.ref_id else "copy",
+        )
     return NodeContextOut(
         node_id=node.id, suite_id=node.suite_id, suite_name=suites.get(node.suite_id, ""),
         path=path,
         parent=NodeBrief(node_id=parent.id, action=parent.action, expected=parent.expected or "") if parent else None,
-        children=children, referrers=referrers,
+        children=children, referrers=referrers, reuses=reuses,
     )
 
 

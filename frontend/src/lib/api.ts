@@ -323,7 +323,8 @@ export interface NodeContext {
   path: string
   parent: NodeBrief | null
   children: NodeBrief[]
-  referrers: NodeUsageRef[]
+  referrers: NodeUsageRef[]      // who reuses THIS node
+  reuses: NodeUsageRef | null    // what THIS node reuses (its source)
 }
 
 export const fetchAllNodes = (params: { q?: string; suite_id?: string; offset?: number; limit?: number }) =>

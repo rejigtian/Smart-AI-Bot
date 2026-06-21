@@ -38,6 +38,20 @@ function NodeContextPanel({ nodeId }: { nodeId: string }) {
         ))}
       </div>
 
+      {ctx.reuses && (
+        <div>
+          <div className="text-xs text-gray-500 mb-1">复用自 / 源</div>
+          <button className="w-full text-left px-2 py-1 rounded hover:bg-gray-50 border text-xs"
+                  onClick={() => navigate(`/suites/${ctx.reuses!.suite_id}`)}>
+            <span className={`px-1.5 py-0.5 rounded mr-2 ${ctx.reuses.kind === 'link' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+              {ctx.reuses.kind === 'link' ? '活链接（改源会同步）' : '快照拷贝（改源不影响）'}
+            </span>
+            <span className="font-mono">{ctx.reuses.path}</span>
+            <span className="text-gray-400"> · {ctx.reuses.suite_name}</span>
+          </button>
+        </div>
+      )}
+
       <div>
         <div className="text-xs text-gray-500 mb-1">被复用 / 引用方（{ctx.referrers.length}）</div>
         {ctx.referrers.length === 0 && <div className="text-gray-400 text-xs">（还没有被复用）</div>}
