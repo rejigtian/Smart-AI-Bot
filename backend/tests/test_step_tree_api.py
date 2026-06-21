@@ -128,3 +128,37 @@ async def test_node_move_and_cycle_guard(client, suite_id):
     bad = await client.post(f"/api/suites/{suite_id}/nodes/{a['id']}/move",
                             json={"new_parent_id": c["id"]})
     assert bad.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_node_search_across_suites(client, session):
+    s1 = TestSuite(name="A", source_format="manual"); s2 = TestSuite(name="B", source_format="manual")
+    session.add_all([s1, s2]); await session.flush()
+    n1 = StepNode(suite_id=s1.id, parent_id=None, action="登录", order=0); session.add(n1); await session.flush()
+    n2 = StepNode(suite_id=s1.id, parent_id=n1.id, action="进入语音页面", order=0); session.add(n2)
+    other = StepNode(suite_id=s2.id, parent_id=None, action="设置", order=0); session.add(other)
+    await session.commit()
+
+    hits = (await client.get("/api/nodes/search", params={"q": "语音"})).json()
+    assert any(h["node_id"] == n2.id and h["path"] == "登录 > 进入语音页面" for h in hits)
+    assert all(h["node_id"] != other.id for h in hits)
+
+
+@pytest.mark.asyncio
+async def test_copy_chain_into_suite(client, session):
+    src = TestSuite(name="src", source_format="manual"); dst = TestSuite(name="dst", source_format="manual")
+    session.add_all([src, dst]); await session.flush()
+    a = StepNode(suite_id=src.id, parent_id=None, action="登录", order=0); session.add(a); await session.flush()
+    b = StepNode(suite_id=src.id, parent_id=a.id, action="语音", expected="进入语音页", order=0); session.add(b)
+    root = StepNode(suite_id=dst.id, parent_id=None, action="首页", order=0); session.add(root)
+    await session.commit()
+
+    created = (await client.post(f"/api/suites/{dst.id}/nodes/copy",
+               json={"source_node_id": b.id, "parent_id": root.id})).json()
+    assert [c["action"] for c in created] == ["登录", "语音"]
+    # persisted under dst, linked beneath root, fresh ids
+    nodes = (await client.get(f"/api/suites/{dst.id}/nodes")).json()
+    login = next(n for n in nodes if n["action"] == "登录")
+    assert login["parent_id"] == root.id and login["suite_id"] == dst.id
+    voice = next(n for n in nodes if n["action"] == "语音")
+    assert voice["expected"] == "进入语音页" and voice["parent_id"] == login["id"]

@@ -42,6 +42,7 @@ app.add_middleware(
 # REST routers
 app.include_router(devices.router)
 app.include_router(testsuites.router)
+app.include_router(testsuites.nodes_router)
 app.include_router(testruns.router)
 app.include_router(recorder.router)
 app.include_router(settings.router)

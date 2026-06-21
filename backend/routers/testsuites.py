@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.step_tree import ChainItem, NodeRow, chain_to_node, clone_chain
 from core.test_parser import parse_file
 from db.database import AsyncSessionLocal
 from db.models import LessonLearned, StepNode, TestCase, TestResult, TestRun, TestStepLog, TestSuite
@@ -79,6 +80,19 @@ class NodePatch(BaseModel):
 
 class MoveIn(BaseModel):
     new_parent_id: Optional[str] = None
+
+
+class NodeSearchHit(BaseModel):
+    node_id: str
+    suite_id: str
+    suite_name: str
+    path: str
+    expected: str
+
+
+class CopyIn(BaseModel):
+    source_node_id: str
+    parent_id: Optional[str] = None
 
 
 @router.get("", response_model=List[SuiteOut])
@@ -354,6 +368,75 @@ async def delete_node(suite_id: str, node_id: str, db: AsyncSession = Depends(ge
     )
     await db.delete(node)
     await db.commit()
+
+
+@router.post("/{suite_id}/nodes/copy", response_model=List[NodeOut])
+async def copy_nodes(suite_id: str, body: CopyIn, db: AsyncSession = Depends(get_db)):
+    """Snapshot-copy a source node's root→node chain under parent_id in this suite."""
+    src = await db.get(StepNode, body.source_node_id)
+    if not src:
+        raise HTTPException(status_code=404, detail="Source node not found")
+    src_rows = (await db.execute(
+        select(StepNode).where(StepNode.suite_id == src.suite_id)
+    )).scalars().all()
+    node_rows = [NodeRow(id=r.id, parent_id=r.parent_id, action=r.action,
+                         expected=r.expected or "", order=r.order) for r in src_rows]
+    chain = chain_to_node(node_rows, body.source_node_id)
+    head = clone_chain([ChainItem(c.action, c.expected) for c in chain])
+    if head is None:
+        raise HTTPException(status_code=400, detail="Source chain is empty")
+    res = await db.execute(
+        select(func.max(StepNode.order))
+        .where(StepNode.suite_id == suite_id, StepNode.parent_id == body.parent_id)
+    )
+    base_order = (res.scalar() or -1) + 1
+    created: list = []
+
+    async def _persist(bn, parent_id, order):
+        row = StepNode(suite_id=suite_id, parent_id=parent_id, action=bn.action,
+                       expected=bn.expected, order=order)
+        db.add(row); await db.flush()
+        created.append(row)
+        for i, ch in enumerate(bn.children):
+            await _persist(ch, row.id, i)
+
+    await _persist(head, body.parent_id, base_order)
+    await db.commit()
+    return [_node_out(n) for n in created]
+
+
+# ── Cross-suite node search (case library) ─────────────────────────────────────
+
+nodes_router = APIRouter(prefix="/api/nodes", tags=["nodes"])
+
+
+@nodes_router.get("/search", response_model=List[NodeSearchHit])
+async def search_nodes(q: str, limit: int = 20, db: AsyncSession = Depends(get_db)):
+    """Search every suite's step-tree for nodes whose root→node path or expected
+    contains `q` (case-insensitive substring)."""
+    ql = q.strip().lower()
+    if not ql:
+        return []
+    rows = (await db.execute(select(StepNode))).scalars().all()
+    suites = {s.id: s.name for s in (await db.execute(select(TestSuite))).scalars().all()}
+    by_suite: dict = {}
+    for r in rows:
+        by_suite.setdefault(r.suite_id, []).append(
+            NodeRow(id=r.id, parent_id=r.parent_id, action=r.action,
+                    expected=r.expected or "", order=r.order)
+        )
+    hits: list = []
+    for r in rows:
+        chain = chain_to_node(by_suite[r.suite_id], r.id)
+        path = " > ".join(c.action for c in chain)
+        if ql in (path + " " + (r.expected or "")).lower():
+            hits.append(NodeSearchHit(
+                node_id=r.id, suite_id=r.suite_id,
+                suite_name=suites.get(r.suite_id, ""), path=path, expected=r.expected or "",
+            ))
+        if len(hits) >= limit:
+            break
+    return hits
 
 
 # ── Trends ───────────────────────────────────────────────────────────────────
