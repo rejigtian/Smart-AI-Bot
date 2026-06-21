@@ -2,11 +2,12 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchSuite, fetchCases, fetchDevices, fetchSettings, fetchTrends, startRun, batchRun,
+  fetchSuite, fetchCases, fetchDevices, fetchSettings, fetchTrends, startRun, batchRun, runTree, runNode,
   addCase, updateCase, deleteCase, TestCase,
   fetchCaseResults, deleteCaseResult, purgeCaseResults, TrendPoint,
   fetchRuns, deleteRun, Run,
 } from '../lib/api'
+import StepTreeEditor from '../components/StepTreeEditor'
 
 const PROVIDERS = ['openai', 'anthropic', 'bedrock', 'google', 'zhipuai', 'groq', 'ollama']
 
@@ -67,6 +68,12 @@ function collectCaseIds(node: TreeNode): string[] {
   return [...node.cases.map(c => c.id), ...node.children.flatMap(collectCaseIds)]
 }
 
+function collectCases(node: TreeNode): TestCase[] {
+  return [...node.cases, ...node.children.flatMap(collectCases)]
+}
+
+const pathSegs = (p: string): string[] => (p || '').split('>').map(s => s.trim()).filter(Boolean)
+
 type FolderProps = {
   node: TreeNode; depth: number; suiteId: string; total: number
   pathKey: string; collapsed: Set<string>; toggle: (k: string) => void
@@ -75,12 +82,56 @@ type FolderProps = {
 
 function TreeFolder({ node, depth, suiteId, total, pathKey, collapsed, toggle, parentBase, onBatch }: FolderProps) {
   const open = !collapsed.has(pathKey)
+  const qc = useQueryClient()
   const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [labelDraft, setLabelDraft] = useState(node.label)
   const indent = depth * 16
   const base = node.label ? (parentBase ? `${parentBase} > ${node.label}` : node.label) : parentBase
+
+  // Rename this scenario's path segment(s). The path is shared by every case
+  // beneath it, so rewrite the matching prefix of each descendant's path.
+  const renameMut = useMutation({
+    mutationFn: async () => {
+      const oldSegs = pathSegs(base)
+      const newSegs = [...pathSegs(parentBase), ...pathSegs(labelDraft)]
+      await Promise.all(collectCases(node).map(c => {
+        const newPath = [...newSegs, ...pathSegs(c.path).slice(oldSegs.length)].join(' > ')
+        return updateCase(suiteId, c.id, { path: newPath, expected: c.expected })
+      }))
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases', suiteId] }); setEditing(false) },
+  })
+
   return (
     <div>
-      {node.label !== '' && (
+      {node.label !== '' && (editing ? (
+        <div className="px-4 py-3 bg-primary-soft border-t" style={{ paddingLeft: 16 + indent }}>
+          <div className="text-xs text-gray-500 mb-1">
+            场景路径 / Scenario path（保存会同步到该场景下的 {countLeaves(node)} 条子用例）
+          </div>
+          <input
+            className="w-full border rounded px-2 py-1 text-sm mb-2 font-mono"
+            value={labelDraft}
+            onChange={e => setLabelDraft(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <button
+              className="px-3 py-1 bg-primary text-white text-xs rounded hover:bg-primary-deep disabled:opacity-50"
+              disabled={renameMut.isPending || labelDraft.trim() === ''}
+              onClick={() => renameMut.mutate()}
+            >
+              {renameMut.isPending ? '保存中…' : '保存'}
+            </button>
+            <button
+              className="px-3 py-1 border text-xs rounded hover:bg-gray-100"
+              onClick={() => { setLabelDraft(node.label); setEditing(false) }}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      ) : (
         <div className="flex items-center border-t hover:bg-canvas-cool group">
           <button
             type="button"
@@ -94,9 +145,17 @@ function TreeFolder({ node, depth, suiteId, total, pathKey, collapsed, toggle, p
           </button>
           <button
             type="button"
+            onClick={() => { setLabelDraft(node.label); setEditing(true) }}
+            title="编辑这个场景的路径（会同步到该场景下的所有子用例）"
+            className="px-2 py-0.5 text-xs rounded border border-hairline-strong text-primary opacity-0 group-hover:opacity-100 hover:bg-primary-soft flex-shrink-0"
+          >
+            编辑
+          </button>
+          <button
+            type="button"
             onClick={() => { setAdding(true); if (!open) toggle(pathKey) }}
             title="在这个分组下添加一条子用例"
-            className="px-2 py-0.5 text-xs rounded border border-hairline-strong text-ok opacity-0 group-hover:opacity-100 hover:bg-green-50 flex-shrink-0"
+            className="ml-2 px-2 py-0.5 text-xs rounded border border-hairline-strong text-ok opacity-0 group-hover:opacity-100 hover:bg-green-50 flex-shrink-0"
           >
             + 子用例
           </button>
@@ -109,7 +168,7 @@ function TreeFolder({ node, depth, suiteId, total, pathKey, collapsed, toggle, p
             ▶ 批量跑
           </button>
         </div>
-      )}
+      ))}
       {open && (
         <>
           {adding && (
@@ -145,9 +204,10 @@ function CaseRow({
   const [showHistory, setShowHistory] = useState(false)
   const [path, setPath] = useState(c.path)
   const [expected, setExpected] = useState(c.expected)
+  const [loopTask, setLoopTask] = useState(c.loop_task)
 
   const saveMut = useMutation({
-    mutationFn: () => updateCase(suiteId, c.id, { path, expected }),
+    mutationFn: () => updateCase(suiteId, c.id, { path, expected, loop_task: loopTask }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['cases', suiteId] }); setEditing(false) },
   })
 
@@ -171,6 +231,20 @@ function CaseRow({
           value={expected}
           onChange={e => setExpected(e.target.value)}
         />
+        <label className="flex items-start gap-2 mb-3 text-xs text-gray-600 cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={loopTask}
+            onChange={e => setLoopTask(e.target.checked)}
+          />
+          <span>
+            循环任务 / Loop task
+            <span className="text-gray-400">
+              （答题、批量点赞等会重复同一动作的任务；跳过卡死自动失败兜底，仅靠最大步数收尾）
+            </span>
+          </span>
+        </label>
         <div className="flex gap-2">
           <button
             className="px-3 py-1 bg-primary text-white text-xs rounded hover:bg-primary-deep disabled:opacity-50"
@@ -181,7 +255,7 @@ function CaseRow({
           </button>
           <button
             className="px-3 py-1 border text-xs rounded hover:bg-gray-100"
-            onClick={() => { setPath(c.path); setExpected(c.expected); setEditing(false) }}
+            onClick={() => { setPath(c.path); setExpected(c.expected); setLoopTask(c.loop_task); setEditing(false) }}
           >
             取消
           </button>
@@ -197,7 +271,17 @@ function CaseRow({
         <span className="text-ink-faint mt-0.5 select-none">·</span>
         <div className="flex-1 min-w-0">
           {showPath && <div className="text-xs text-gray-400 truncate">{c.path}</div>}
-          <div className="text-sm font-medium">{c.expected}</div>
+          <div className="text-sm font-medium">
+            {c.expected}
+            {c.loop_task && (
+              <span
+                className="ml-2 align-middle px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700"
+                title="循环任务：跳过卡死自动失败兜底，仅靠最大步数收尾"
+              >
+                循环
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex gap-1 flex-shrink-0 mt-0.5">
           <button
@@ -325,6 +409,7 @@ function AddCaseForm({ suiteId, basePath = '', indentPx = 16, onDone }: {
   const qc = useQueryClient()
   const [path, setPath] = useState(basePath)
   const [expected, setExpected] = useState('')
+  const [loopTask, setLoopTask] = useState(false)
 
   const norm = (s: string) => s.trim().replace(/>\s*$/, '').trim()
   // A check needs both a location (path) and an assertion (expected). This also
@@ -332,7 +417,7 @@ function AddCaseForm({ suiteId, basePath = '', indentPx = 16, onDone }: {
   const canAdd = norm(path) !== '' && expected.trim() !== ''
 
   const addMut = useMutation({
-    mutationFn: () => addCase(suiteId, { path: norm(path), expected: expected.trim() }),
+    mutationFn: () => addCase(suiteId, { path: norm(path), expected: expected.trim(), loop_task: loopTask }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cases', suiteId] })
       qc.invalidateQueries({ queryKey: ['suite', suiteId] })
@@ -361,6 +446,20 @@ function AddCaseForm({ suiteId, basePath = '', indentPx = 16, onDone }: {
         onChange={e => setExpected(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter' && canAdd) addMut.mutate() }}
       />
+      <label className="flex items-start gap-2 mb-3 text-xs text-gray-600 cursor-pointer">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={loopTask}
+          onChange={e => setLoopTask(e.target.checked)}
+        />
+        <span>
+          循环任务 / Loop task
+          <span className="text-gray-400">
+            （答题、批量点赞等会重复同一动作的任务；跳过卡死自动失败兜底，仅靠最大步数收尾）
+          </span>
+        </span>
+      </label>
       <div className="flex items-center gap-2">
         <button
           className="px-3 py-1 bg-ok text-white text-xs rounded hover:bg-ok disabled:opacity-50"
@@ -570,6 +669,7 @@ export default function SuiteDetail() {
   })
   const allCollapsed = allFolderKeys.length > 0 && allFolderKeys.every(k => collapsed.has(k))
   const [addingRoot, setAddingRoot] = useState(false)
+  const [viewMode, setViewMode] = useState<'cases' | 'tree'>('cases')
 
   // Only apply saved defaults once on first load; don't overwrite user's manual changes
   useEffect(() => {
@@ -595,6 +695,28 @@ export default function SuiteDetail() {
     } else {
       setModel(DEFAULT_MODELS[p] || '')
     }
+  }
+
+  const treeRunMut = useMutation({
+    mutationFn: () => runTree({ suite_id: suiteId!, device_id: deviceId, provider, model, max_steps: maxSteps }),
+    onSuccess: run => navigate(`/runs/${run.id}`),
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || String(e)
+      alert(`步骤树运行启动失败: ${msg}`)
+    },
+  })
+
+  const nodeRunMut = useMutation({
+    mutationFn: (nodeId: string) => runNode({ suite_id: suiteId!, device_id: deviceId, node_id: nodeId, provider, model, max_steps: maxSteps }),
+    onSuccess: run => navigate(`/runs/${run.id}`),
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || String(e)
+      alert(`节点运行启动失败: ${msg}`)
+    },
+  })
+  const onRunNode = (nodeId: string) => {
+    if (!deviceId) { alert('请先在右侧选择设备'); return }
+    nodeRunMut.mutate(nodeId)
   }
 
   const runMut = useMutation({
@@ -632,8 +754,12 @@ export default function SuiteDetail() {
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold mb-1">{(suite?.name || '').replace(/\.xmind$/i, '')}</h1>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-sm text-gray-500">{cases.length} 条用例 · 按路径分组 · 悬停行可编辑</p>
-            {allFolderKeys.length > 0 && (
+            <p className="text-sm text-gray-500">
+              {viewMode === 'cases'
+                ? `${cases.length} 条用例 · 按路径分组 · 悬停行可编辑`
+                : '步骤树 · 拖动节点改挂 · 悬停行可编辑'}
+            </p>
+            {viewMode === 'cases' && allFolderKeys.length > 0 && (
               <button
                 type="button"
                 className="text-xs text-primary hover:text-primary-deep"
@@ -644,6 +770,23 @@ export default function SuiteDetail() {
             )}
           </div>
 
+          {/* View toggle: legacy case list vs new step-tree editor */}
+          <div className="inline-flex rounded-md border mb-3 text-xs overflow-hidden">
+            {(['cases', 'tree'] as const).map(m => (
+              <button
+                key={m}
+                type="button"
+                className={`px-3 py-1 ${viewMode === m ? 'bg-primary text-white' : 'bg-white text-ink-mute hover:bg-gray-50'}`}
+                onClick={() => setViewMode(m)}
+              >
+                {m === 'cases' ? '用例视图' : '步骤树'}
+              </button>
+            ))}
+          </div>
+
+          {viewMode === 'tree' && <StepTreeEditor suiteId={suiteId!} onRunNode={onRunNode} />}
+
+          {viewMode === 'cases' && (
           <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
             {rootPrefix && (
               <>
@@ -677,6 +820,7 @@ export default function SuiteDetail() {
             ))}
             <AddCaseRow suiteId={suiteId!} />
           </div>
+          )}
 
           {/* Pass rate trend chart */}
           {trends.length >= 2 && (
@@ -766,6 +910,17 @@ export default function SuiteDetail() {
             >
               {runMut.isPending ? '启动中…' : isolated ? '▶ 开始运行（隔离）' : '▶ 开始运行（树形）'}
             </button>
+
+            {viewMode === 'tree' && (
+              <button
+                className="w-full mt-2 bg-ok text-white py-2 rounded font-medium hover:bg-ok disabled:opacity-50"
+                disabled={!deviceId || treeRunMut.isPending}
+                onClick={() => treeRunMut.mutate()}
+                title="按步骤树做一次深度优先遍历，逐个叶子用例运行"
+              >
+                {treeRunMut.isPending ? '启动中…' : '▶ 运行步骤树（DFS）'}
+              </button>
+            )}
           </div>
         </div>
       </div>
