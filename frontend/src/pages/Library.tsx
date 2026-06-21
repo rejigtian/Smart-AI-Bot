@@ -74,13 +74,14 @@ export default function Library() {
   const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [suiteId, setSuiteId] = useState('')
+  const [showDerived, setShowDerived] = useState(false)
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
 
   const { data: suites = [] } = useQuery({ queryKey: ['suites'], queryFn: fetchSuites })
   const { data, isFetching } = useQuery({
-    queryKey: ['nodes-all', q, suiteId, page],
-    queryFn: () => fetchAllNodes({ q: q.trim(), suite_id: suiteId, offset: page * PAGE, limit: PAGE }),
+    queryKey: ['nodes-all', q, suiteId, showDerived, page],
+    queryFn: () => fetchAllNodes({ q: q.trim(), suite_id: suiteId, include_derived: showDerived, offset: page * PAGE, limit: PAGE }),
     placeholderData: keepPreviousData,
   })
   const items = data?.items ?? []
@@ -105,6 +106,10 @@ export default function Library() {
           <option value="">全部套件</option>
           {suites.map(s => <option key={s.id} value={s.id}>{(s.name || '').replace(/\.xmind$/i, '')}</option>)}
         </select>
+        <label className="flex items-center gap-1.5 text-xs text-ink-mute whitespace-nowrap cursor-pointer">
+          <input type="checkbox" checked={showDerived} onChange={e => { setShowDerived(e.target.checked); reset() }} />
+          显示拷贝/链接副本
+        </label>
       </div>
 
       <div className="flex gap-4 items-start">

@@ -731,10 +731,12 @@ class NodeListPage(BaseModel):
 
 
 @nodes_router.get("/all", response_model=NodeListPage)
-async def list_all_nodes(q: str = "", suite_id: str = "", offset: int = 0,
-                         limit: int = 50, db: AsyncSession = Depends(get_db)):
-    """Flat, searchable, paginated list of every step node (the library catalog).
-    Sorted most-reused first. q matches the node's path or expected; suite_id filters."""
+async def list_all_nodes(q: str = "", suite_id: str = "", include_derived: bool = False,
+                         offset: int = 0, limit: int = 50, db: AsyncSession = Depends(get_db)):
+    """Flat, searchable, paginated list of step nodes (the library catalog).
+    Sorted most-reused first. q matches the node's path or expected; suite_id filters.
+    By default DERIVED nodes (snapshot copies / live-link placeholders) are hidden so a
+    reused flow isn't listed twice — set include_derived=true to show them."""
     rows = (await db.execute(select(StepNode))).scalars().all()
     suites = {s.id: s.name for s in (await db.execute(select(TestSuite))).scalars().all()}
     reuse: dict = {}
@@ -755,6 +757,8 @@ async def list_all_nodes(q: str = "", suite_id: str = "", offset: int = 0,
     for r in rows:
         if suite_id and r.suite_id != suite_id:
             continue
+        if not include_derived and (r.ref_id or r.source_id):
+            continue  # hide snapshot copies / link placeholders by default
         path = " > ".join(c.action for c in chain_to_node(by_suite[r.suite_id], r.id))
         if ql and ql not in (path + " " + (r.expected or "")).lower():
             continue

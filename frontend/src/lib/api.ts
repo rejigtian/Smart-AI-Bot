@@ -327,7 +327,7 @@ export interface NodeContext {
   reuses: NodeUsageRef | null    // what THIS node reuses (its source)
 }
 
-export const fetchAllNodes = (params: { q?: string; suite_id?: string; offset?: number; limit?: number }) =>
+export const fetchAllNodes = (params: { q?: string; suite_id?: string; include_derived?: boolean; offset?: number; limit?: number }) =>
   api.get<{ total: number; items: NodeListItem[] }>('/nodes/all', { params }).then(r => r.data)
 
 export const fetchNodeContext = (nodeId: string) =>
