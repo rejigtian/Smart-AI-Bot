@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchNodes, addNode, updateNode, deleteNode, moveNode, StepNode,
+  searchNodes, copyNode, NodeSearchHit,
 } from '../lib/api'
 
 // ── Tree assembly from the flat parent_id list ──────────────────────────────
@@ -37,6 +38,7 @@ function NodeRow({
   const invalidate = () => qc.invalidateQueries({ queryKey: ['nodes', suiteId] })
   const [editing, setEditing] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [reusing, setReusing] = useState(false)
   const [dropHover, setDropHover] = useState(false)
   const [action, setAction] = useState(node.action)
   const [expected, setExpected] = useState(node.expected)
@@ -124,6 +126,7 @@ function NodeRow({
             </button>
           )}
           <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setAdding(true)}>+ 步骤</button>
+          <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setReusing(true)}>复用</button>
           <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setEditing(true)}>编辑</button>
           <button className="px-2 py-0.5 text-xs border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-50"
                   disabled={delMut.isPending}
@@ -136,11 +139,53 @@ function NodeRow({
         <AddNodeForm suiteId={suiteId} parentId={node.id} indentPx={16 + indent + 18}
                      onDone={() => setAdding(false)} />
       )}
+      {reusing && (
+        <ReusePicker suiteId={suiteId} parentId={node.id} indentPx={16 + indent + 18}
+                     onDone={() => setReusing(false)} />
+      )}
       {node.children.map(c => (
         <NodeRow key={c.id} node={c} depth={depth + 1} suiteId={suiteId}
                  dragId={dragId} setDragId={setDragId} onRunNode={onRunNode} />
       ))}
     </>
+  )
+}
+
+// ── Case-library reuse picker: search any suite, insert a snapshot copy ──────
+
+function ReusePicker({ suiteId, parentId, indentPx, onDone }: {
+  suiteId: string; parentId: string | null; indentPx: number; onDone: () => void
+}) {
+  const qc = useQueryClient()
+  const [q, setQ] = useState('')
+  const { data: hits = [] } = useQuery({
+    queryKey: ['node-search', q],
+    queryFn: () => (q.trim() ? searchNodes(q.trim()) : Promise.resolve([] as NodeSearchHit[])),
+    enabled: q.trim().length > 0,
+  })
+  const copyMut = useMutation({
+    mutationFn: (sourceId: string) => copyNode(suiteId, sourceId, parentId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['nodes', suiteId] }); onDone() },
+  })
+  return (
+    <div className="py-3 border-t bg-blue-50" style={{ paddingLeft: indentPx, paddingRight: 16 }}>
+      <div className="text-xs text-gray-500 mb-1">搜索用例库复用一段流程（插入为快照拷贝）</div>
+      <input autoFocus className="w-full border rounded px-2 py-1 text-sm mb-2"
+             placeholder="搜索行为或期望，如「登录」「语音」" value={q} onChange={e => setQ(e.target.value)} />
+      <div className="max-h-48 overflow-auto">
+        {hits.map(h => (
+          <button key={h.node_id} disabled={copyMut.isPending}
+                  className="w-full text-left px-2 py-1 text-xs hover:bg-white rounded disabled:opacity-50"
+                  onClick={() => copyMut.mutate(h.node_id)}>
+            <span className="font-mono">{h.path}</span>
+            {h.expected && <span className="text-blue-600"> · 期望:{h.expected}</span>}
+            <span className="text-gray-400"> · {h.suite_name}</span>
+          </button>
+        ))}
+        {q.trim() && hits.length === 0 && <div className="text-xs text-gray-400 px-2 py-1">没有匹配</div>}
+      </div>
+      <button className="mt-2 px-3 py-1 border text-xs rounded hover:bg-gray-100" onClick={onDone}>取消</button>
+    </div>
   )
 }
 
@@ -188,6 +233,7 @@ export default function StepTreeEditor({ suiteId, onRunNode }: { suiteId: string
   })
   const tree = useMemo(() => buildTree(nodes), [nodes])
   const [addingRoot, setAddingRoot] = useState(false)
+  const [reusingRoot, setReusingRoot] = useState(false)
   const [dragId, setDragId] = useState<string | null>(null)
 
   if (isLoading) return <div className="p-4 text-sm text-gray-400">加载步骤树…</div>
@@ -200,10 +246,19 @@ export default function StepTreeEditor({ suiteId, onRunNode }: { suiteId: string
       {tree.map(n => (
         <NodeRow key={n.id} node={n} depth={0} suiteId={suiteId} dragId={dragId} setDragId={setDragId} onRunNode={onRunNode} />
       ))}
+      {reusingRoot && (
+        <ReusePicker suiteId={suiteId} parentId={null} indentPx={16} onDone={() => setReusingRoot(false)} />
+      )}
       {addingRoot
         ? <AddNodeForm suiteId={suiteId} parentId={null} indentPx={16} onDone={() => setAddingRoot(false)} />
-        : <button className="w-full text-left px-4 py-2.5 text-sm text-primary hover:bg-primary-soft border-t"
-                  onClick={() => setAddingRoot(true)}>+ 根步骤</button>}
+        : (
+          <div className="flex border-t">
+            <button className="flex-1 text-left px-4 py-2.5 text-sm text-primary hover:bg-primary-soft"
+                    onClick={() => setAddingRoot(true)}>+ 根步骤</button>
+            <button className="px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 border-l"
+                    onClick={() => setReusingRoot(true)}>从用例库复用</button>
+          </div>
+        )}
     </div>
   )
 }

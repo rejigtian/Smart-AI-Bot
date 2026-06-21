@@ -306,6 +306,20 @@ export const runTree = (data: { suite_id: string; device_id: string; provider: s
 export const runNode = (data: { suite_id: string; device_id: string; node_id: string; provider: string; model: string; max_steps: number }) =>
   api.post<Run>('/runs/node', data).then(r => r.data)
 
+export interface NodeSearchHit {
+  node_id: string
+  suite_id: string
+  suite_name: string
+  path: string
+  expected: string
+}
+
+export const searchNodes = (q: string) =>
+  api.get<NodeSearchHit[]>('/nodes/search', { params: { q } }).then(r => r.data)
+
+export const copyNode = (suiteId: string, sourceNodeId: string, parentId: string | null) =>
+  api.post<StepNode[]>(`/suites/${suiteId}/nodes/copy`, { source_node_id: sourceNodeId, parent_id: parentId }).then(r => r.data)
+
 // ── Settings ─────────────────────────────────────────────────────────────────
 
 export const fetchSettings = () => api.get<Settings>('/settings').then(r => r.data)
