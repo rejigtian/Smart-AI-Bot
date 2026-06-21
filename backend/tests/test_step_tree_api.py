@@ -142,6 +142,23 @@ async def test_list_nodes_self_heals_unmigrated_suite(client, session):
 
 
 @pytest.mark.asyncio
+async def test_node_results_history(client, session):
+    suite = TestSuite(name="s", source_format="manual"); session.add(suite); await session.flush()
+    node = StepNode(suite_id=suite.id, parent_id=None, action="登录", order=0); session.add(node); await session.flush()
+    run = TestRun(suite_id=suite.id, device_id="d", provider="p", model="m"); session.add(run); await session.flush()
+    r = TestResult(run_id=run.id, case_id=node.id, status="pass", steps=3, total_tokens=42)
+    session.add(r); await session.commit()
+
+    results = (await client.get(f"/api/nodes/{node.id}/results")).json()
+    assert len(results) == 1 and results[0]["status"] == "pass" and results[0]["steps"] == 3
+
+    # purge clears them
+    out = (await client.delete(f"/api/nodes/{node.id}/results", params={"scope": "all"})).json()
+    assert out["deleted"] == 1
+    assert (await client.get(f"/api/nodes/{node.id}/results")).json() == []
+
+
+@pytest.mark.asyncio
 async def test_node_search_across_suites(client, session):
     s1 = TestSuite(name="A", source_format="manual"); s2 = TestSuite(name="B", source_format="manual")
     session.add_all([s1, s2]); await session.flush()

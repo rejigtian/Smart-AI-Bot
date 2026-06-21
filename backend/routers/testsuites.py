@@ -607,3 +607,55 @@ async def delete_case_results(
     rows = (await db.execute(stmt)).scalars().all()
     n = await _purge_results(list(rows), db)
     return PurgeOut(deleted=n)
+
+
+# ── Per-node run history (same TestResult table, keyed by node id) ─────────────
+# Defined here (end of file) so CaseResultOut / PurgeOut / _purge_results exist.
+
+async def _require_node(node_id: str, db: AsyncSession) -> StepNode:
+    node = await db.get(StepNode, node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    return node
+
+
+@nodes_router.get("/{node_id}/results", response_model=List[CaseResultOut])
+async def list_node_results(node_id: str, db: AsyncSession = Depends(get_db)):
+    """All run records for one step-tree node, newest first."""
+    await _require_node(node_id, db)
+    rows = await db.execute(
+        select(TestResult, TestRun)
+        .join(TestRun, TestResult.run_id == TestRun.id)
+        .where(TestResult.case_id == node_id)
+        .order_by(TestRun.created_at.desc())
+    )
+    out: List[CaseResultOut] = []
+    for result, run in rows.all():
+        out.append(CaseResultOut(
+            id=result.id, run_id=result.run_id, status=result.status, reason=result.reason,
+            steps=result.steps, total_tokens=result.total_tokens, is_starred=result.is_starred,
+            provider=run.provider, model=run.model, created_at=run.created_at.isoformat(),
+            finished_at=result.finished_at.isoformat() if result.finished_at else None,
+        ))
+    return out
+
+
+@nodes_router.delete("/{node_id}/results/{result_id}", status_code=204)
+async def delete_node_result(node_id: str, result_id: str, db: AsyncSession = Depends(get_db)):
+    await _require_node(node_id, db)
+    result = await db.get(TestResult, result_id)
+    if not result or result.case_id != node_id:
+        raise HTTPException(status_code=404, detail="Result not found")
+    await _purge_results([result], db)
+
+
+@nodes_router.delete("/{node_id}/results", response_model=PurgeOut)
+async def delete_node_results(node_id: str, scope: str = "all", db: AsyncSession = Depends(get_db)):
+    await _require_node(node_id, db)
+    if scope not in ("all", "failed"):
+        raise HTTPException(status_code=400, detail="scope must be 'all' or 'failed'")
+    stmt = select(TestResult).where(TestResult.case_id == node_id)
+    if scope == "failed":
+        stmt = stmt.where(TestResult.status.in_(["fail", "error"]))
+    rows = (await db.execute(stmt)).scalars().all()
+    return PurgeOut(deleted=await _purge_results(list(rows), db))
