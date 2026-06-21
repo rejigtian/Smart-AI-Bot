@@ -58,6 +58,11 @@ async def init_db():
             "loop_task": "BOOLEAN DEFAULT 0",
         })
 
+        await _ensure_columns("step_nodes", {
+            "source_id": "VARCHAR",
+            "ref_id": "VARCHAR",
+        })
+
         # suite_id + task_keyword were added to LessonLearned after the table
         # first shipped. Without these, the lesson load/save queries reference
         # non-existent columns and silently fail — i.e. NO cross-run lessons at

@@ -102,13 +102,19 @@ def build_tree_from_cases(cases: List[LegacyCase]) -> List[BuiltNode]:
 
 @dataclass
 class NodeRow:
-    """A flat StepNode row (id, parent_id, action, expected, order, reversible)."""
+    """A flat StepNode row (id, parent_id, action, expected, order, reversible).
+
+    ref_id  — set on a live-link node (resolves to ref_id's node + subtree).
+    linked  — set on the EXPANDED nodes produced by resolve_links (read-only).
+    """
     id: str
     parent_id: str | None
     action: str
     expected: str = ""
     order: int = 0
     reversible: bool = True
+    ref_id: str = ""
+    linked: bool = False
 
 
 @dataclass
@@ -143,6 +149,52 @@ def dfs_run_targets(nodes: List[NodeRow]) -> List[RunTarget]:
     for root in children.get(None, []):
         walk(root, [])
     return targets
+
+
+def resolve_links(suite_nodes: List[NodeRow], all_by_id: dict) -> List[NodeRow]:
+    """Expand live-link nodes into the referenced node's root→node PREFIX chain.
+
+    A link node (ref_id set) reuses the *flow that leads to* ref_id — the same
+    thing a snapshot copy reuses, but live. It is replaced by the linear chain
+    root→ref_id (source ids kept, marked linked=True). The chain's first node is
+    reparented under the link's parent; the link's own children re-attach to the
+    chain's LAST node (the source). Dangling ref → a single placeholder node.
+    Non-link nodes pass through. One level only (no nested-link recursion in v1).
+    """
+    all_nodes = list(all_by_id.values())
+    out: List[NodeRow] = []
+    remap: dict = {}  # link id -> node its children should hang under (chain end)
+    for n in suite_nodes:
+        if not n.ref_id:
+            out.append(n)
+            continue
+        if n.ref_id not in all_by_id:
+            out.append(NodeRow(id=n.id, parent_id=n.parent_id, action="（链接已失效）",
+                               order=n.order, linked=True))
+            remap[n.id] = n.id
+            continue
+        prev = n.parent_id
+        last = n.id
+        for ci in chain_to_node(all_nodes, n.ref_id):  # root→source ChainItems
+            srcrow = all_by_id.get(ci.node_id)
+            out.append(NodeRow(id=ci.node_id, parent_id=prev, action=ci.action,
+                               expected=ci.expected, order=n.order,
+                               reversible=srcrow.reversible if srcrow else True, linked=True))
+            prev = ci.node_id
+            last = ci.node_id
+        remap[n.id] = last
+    if not remap:
+        return out
+    # Re-attach children that pointed at a (now-expanded) link node.
+    fixed: List[NodeRow] = []
+    for n in out:
+        pid = remap.get(n.parent_id, n.parent_id) if n.parent_id else n.parent_id
+        if pid == n.parent_id:
+            fixed.append(n)
+        else:
+            fixed.append(NodeRow(n.id, pid, n.action, n.expected, n.order,
+                                 n.reversible, n.ref_id, n.linked))
+    return fixed
 
 
 def chain_to_node(nodes: List[NodeRow], node_id: str) -> List[ChainItem]:

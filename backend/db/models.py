@@ -74,6 +74,11 @@ class StepNode(Base):
     reversible: Mapped[bool] = mapped_column(Boolean, default=True)   # Phase 2: back-navigable
     loop_task: Mapped[bool] = mapped_column(Boolean, default=False)   # repetitive task
     parameters: Mapped[str] = mapped_column(Text, default="")         # JSON preset test data
+    # Case library (Phase 3):
+    #   source_id — provenance for a SNAPSHOT copy (which node it was copied from)
+    #   ref_id    — a LIVE LINK: this node resolves to ref_id's node + subtree
+    source_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    ref_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, index=True)
 
 
 class TestRun(Base):

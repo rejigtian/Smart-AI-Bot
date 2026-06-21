@@ -181,3 +181,41 @@ def test_backtrack_first_case_has_no_prev():
     nodes = _gender_tree()
     plan = backtrack_plan(nodes, None, "f")    # very first target — nothing to backtrack from
     assert plan.kind == "fresh"
+
+
+from core.step_tree import resolve_links
+
+
+def test_resolve_links_expands_prefix_chain():
+    # source flow (another suite): 登录 → 进入语音页  (reuse = the path TO 进入语音页)
+    src = [
+        NodeRow("s1", None, "登录", order=0),
+        NodeRow("s2", "s1", "进入语音页", expected="到达语音页", order=0),
+    ]
+    # current suite: 首页 → [link→s2] → 点击录音 (user's own step after the reused flow)
+    suite = [
+        NodeRow("r", None, "首页", order=0),
+        NodeRow("lk", "r", "(link)", order=0, ref_id="s2"),
+        NodeRow("own", "lk", "点击录音", expected="开始录音", order=0),
+    ]
+    all_by_id = {n.id: n for n in src + suite}
+    resolved = resolve_links(suite, all_by_id)
+    by_id = {n.id: n for n in resolved}
+    assert "lk" not in by_id                       # link node replaced by the chain
+    assert by_id["s1"].parent_id == "r"            # chain head under the link's parent
+    assert by_id["s2"].parent_id == "s1"           # chain order preserved
+    assert by_id["s1"].linked and by_id["s2"].linked
+    assert by_id["own"].parent_id == "s2"          # link's own child re-attached to chain end
+    assert not by_id["own"].linked                 # user's own node stays editable
+
+
+def test_resolve_links_dangling():
+    suite = [NodeRow("lk", None, "(link)", order=0, ref_id="gone")]
+    resolved = resolve_links(suite, {n.id: n for n in suite})
+    assert len(resolved) == 1 and resolved[0].linked and "失效" in resolved[0].action
+
+
+def test_resolve_links_passthrough():
+    suite = [NodeRow("a", None, "A", order=0), NodeRow("b", "a", "B", order=0)]
+    resolved = resolve_links(suite, {n.id: n for n in suite})
+    assert [n.id for n in resolved] == ["a", "b"] and not any(n.linked for n in resolved)
