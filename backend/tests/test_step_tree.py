@@ -145,3 +145,39 @@ def test_clone_chain_builds_linear_line():
 
 def test_clone_chain_empty():
     assert clone_chain([]) is None
+
+
+from core.step_tree import backtrack_plan
+
+
+def _gender_tree():
+    # 注册 ─ 选性别 ─┬ 女   ;   答题a→b→c, b→d for a reversible case
+    return [
+        NodeRow("reg", None, "注册", order=0),
+        NodeRow("sex", "reg", "选性别", order=0),
+        NodeRow("f", "sex", "女", order=0, reversible=False),   # committing female is irreversible
+        NodeRow("m", "sex", "男", order=1, reversible=False),
+    ]
+
+
+def test_backtrack_reversible_path_goes_back_to_lca():
+    nodes = [
+        NodeRow("a", None, "A", order=0),
+        NodeRow("b", "a", "B", order=0),
+        NodeRow("c", "b", "C", order=0),
+        NodeRow("d", "b", "D", order=1),
+    ]
+    plan = backtrack_plan(nodes, "c", "d")     # diverge at b, all reversible
+    assert plan.kind == "back" and plan.to_node_id == "b"
+
+
+def test_backtrack_irreversible_path_replays():
+    nodes = _gender_tree()
+    plan = backtrack_plan(nodes, "f", "m")     # crossing the irreversible 女 commit
+    assert plan.kind == "replay" and plan.to_node_id is None
+
+
+def test_backtrack_first_case_has_no_prev():
+    nodes = _gender_tree()
+    plan = backtrack_plan(nodes, None, "f")    # very first target — nothing to backtrack from
+    assert plan.kind == "fresh"

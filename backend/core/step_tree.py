@@ -101,12 +101,13 @@ def build_tree_from_cases(cases: List[LegacyCase]) -> List[BuiltNode]:
 
 @dataclass
 class NodeRow:
-    """A flat StepNode row (id, parent_id, action, expected, order)."""
+    """A flat StepNode row (id, parent_id, action, expected, order, reversible)."""
     id: str
     parent_id: str | None
     action: str
     expected: str = ""
     order: int = 0
+    reversible: bool = True
 
 
 @dataclass
@@ -159,6 +160,54 @@ def chain_to_node(nodes: List[NodeRow], node_id: str) -> List[ChainItem]:
         rev.append(ChainItem(cur.action, cur.expected))
         cur = by_id.get(cur.parent_id) if cur.parent_id else None
     return list(reversed(rev))
+
+
+@dataclass
+class BacktrackPlan:
+    """How to get the device from the previous target to the next one.
+
+    kind='fresh'  — first target; just run its chain from the app's start.
+    kind='back'   — back-navigate to `to_node_id` (the LCA), then descend.
+    kind='replay' — an irreversible step lies between; restart from the app's
+                    start and replay the next target's full chain (to_node_id=None).
+    """
+    kind: str
+    to_node_id: str | None = None
+
+
+def _ancestors(by_id: dict, node_id: str) -> List[str]:
+    """node_id, its parent, … up to the root (inclusive)."""
+    out: List[str] = []
+    cur: str | None = node_id
+    seen: set = set()
+    while cur is not None and cur not in seen and cur in by_id:
+        seen.add(cur)
+        out.append(cur)
+        cur = by_id[cur].parent_id
+    return out
+
+
+def backtrack_plan(nodes: List[NodeRow], prev_id: str | None, next_id: str) -> BacktrackPlan:
+    """Decide how to move from `prev_id`'s leaf to `next_id`.
+
+    Conservative ("handle it well"): if any node on prev's path up to the
+    lowest common ancestor is irreversible, back-navigation cannot restore a
+    clean state, so we replay from the start rather than risk a dirty state.
+    """
+    if prev_id is None:
+        return BacktrackPlan(kind="fresh")
+    by_id = {n.id: n for n in nodes}
+    anc_next = set(_ancestors(by_id, next_id))
+    # Walk up from prev; first ancestor also above next is the LCA. Any
+    # irreversible node crossed before reaching it forces a replay.
+    cur: str | None = prev_id
+    while cur is not None and cur in by_id:
+        if cur in anc_next:
+            return BacktrackPlan(kind="back", to_node_id=cur)
+        if not by_id[cur].reversible:
+            return BacktrackPlan(kind="replay", to_node_id=None)
+        cur = by_id[cur].parent_id
+    return BacktrackPlan(kind="replay", to_node_id=None)
 
 
 def clone_chain(items: List[ChainItem]) -> "BuiltNode | None":
