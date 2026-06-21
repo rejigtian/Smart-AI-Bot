@@ -13,7 +13,8 @@ from core.report import generate_html_report
 from core.run_recorder import has_recording, recording_path
 from core.test_runner import active_runs, cancel_run, run_log_stream, start_run, start_batch_run
 from db.database import AsyncSessionLocal
-from db.models import LessonLearned, TestCase, TestResult, TestRun, TestStepLog, TestSuite
+from core.step_tree import NodeRow, chain_to_node
+from db.models import LessonLearned, StepNode, TestCase, TestResult, TestRun, TestStepLog, TestSuite
 from ws.portal_ws import connected_devices
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
@@ -541,31 +542,56 @@ async def get_results(run_id: str, db: AsyncSession = Depends(get_db)):
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
 
-    res = await db.execute(
-        select(TestResult, TestCase)
-        .join(TestCase, TestResult.case_id == TestCase.id)
-        .where(TestResult.run_id == run_id)
-        .order_by(TestCase.order)
-    )
-    rows = res.all()
-    return [
-        ResultOut(
-            id=r.id,
-            case_id=r.case_id,
-            path=c.path,
-            expected=c.expected,
-            status=r.status,
-            reason=r.reason,
-            steps=r.steps,
-            screenshot_b64=r.screenshot_b64,
-            log=r.log,
+    results = (await db.execute(
+        select(TestResult).where(TestResult.run_id == run_id)
+    )).scalars().all()
+
+    # case_id resolves against test_cases (legacy runs) OR step_nodes (tree runs).
+    ids = [r.case_id for r in results]
+    cases = {c.id: c for c in (await db.execute(
+        select(TestCase).where(TestCase.id.in_(ids))
+    )).scalars().all()}
+    node_ids = [cid for cid in ids if cid not in cases]
+    nodes: dict = {}
+    node_path: dict = {}
+    if node_ids:
+        node_rows = (await db.execute(
+            select(StepNode).where(StepNode.id.in_(node_ids))
+        )).scalars().all()
+        nodes = {n.id: n for n in node_rows}
+        suite_ids = {n.suite_id for n in node_rows}
+        suite_nodes = (await db.execute(
+            select(StepNode).where(StepNode.suite_id.in_(suite_ids))
+        )).scalars().all()
+        by_suite: dict = {}
+        for n in suite_nodes:
+            by_suite.setdefault(n.suite_id, []).append(
+                NodeRow(id=n.id, parent_id=n.parent_id, action=n.action,
+                        expected=n.expected or "", order=n.order)
+            )
+        for nid, n in nodes.items():
+            chain = chain_to_node(by_suite.get(n.suite_id, []), nid)
+            node_path[nid] = " > ".join(c.action for c in chain)
+
+    def _path_expected(cid: str):
+        if cid in cases:
+            return cases[cid].path, cases[cid].expected
+        if cid in nodes:
+            return node_path.get(cid, ""), nodes[cid].expected or ""
+        return "", ""
+
+    out = []
+    for r in results:
+        path, expected = _path_expected(r.case_id)
+        out.append(ResultOut(
+            id=r.id, case_id=r.case_id, path=path, expected=expected,
+            status=r.status, reason=r.reason, steps=r.steps,
+            screenshot_b64=r.screenshot_b64, log=r.log,
             started_at=r.started_at.isoformat() if r.started_at else None,
             finished_at=r.finished_at.isoformat() if r.finished_at else None,
-            is_starred=r.is_starred or False,
-            total_tokens=r.total_tokens or 0,
-        )
-        for r, c in rows
-    ]
+            is_starred=r.is_starred or False, total_tokens=r.total_tokens or 0,
+        ))
+    return out
 
 
 @router.get("/{run_id}/results/{result_id}/steps", response_model=List[StepOut])

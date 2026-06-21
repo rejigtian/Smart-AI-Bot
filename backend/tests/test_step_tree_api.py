@@ -71,13 +71,17 @@ import httpx
 from httpx import ASGITransport
 from main import app
 from routers.testsuites import get_db
+from routers import testruns as _testruns
 
 
 @pytest_asyncio.fixture
 async def client(session):
     async def _override():
         yield session
+    # Both routers define their own get_db; override both so cross-router
+    # endpoints (e.g. /runs/.../results) hit the in-memory session too.
     app.dependency_overrides[get_db] = _override
+    app.dependency_overrides[_testruns.get_db] = _override
     transport = ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
         yield c
@@ -156,6 +160,25 @@ async def test_node_results_history(client, session):
     out = (await client.delete(f"/api/nodes/{node.id}/results", params={"scope": "all"})).json()
     assert out["deleted"] == 1
     assert (await client.get(f"/api/nodes/{node.id}/results")).json() == []
+
+
+@pytest.mark.asyncio
+async def test_run_results_resolve_node_ids(client, session):
+    # Tree-run results key TestResult.case_id to a node id — the run detail must
+    # still resolve path/expected (regression: inner-join to test_cases gave [] ).
+    suite = TestSuite(name="s", source_format="manual"); session.add(suite); await session.flush()
+    n1 = StepNode(suite_id=suite.id, parent_id=None, action="登录", order=0); session.add(n1); await session.flush()
+    n2 = StepNode(suite_id=suite.id, parent_id=n1.id, action="点击空间", expected="个人信息页", order=0)
+    session.add(n2); await session.flush()
+    run = TestRun(suite_id=suite.id, device_id="d", provider="p", model="m"); session.add(run); await session.flush()
+    session.add(TestResult(run_id=run.id, case_id=n2.id, status="pass", steps=5))
+    await session.commit()
+
+    results = (await client.get(f"/api/runs/{run.id}/results")).json()
+    assert len(results) == 1
+    assert results[0]["path"] == "登录 > 点击空间"
+    assert results[0]["expected"] == "个人信息页"
+    assert results[0]["status"] == "pass"
 
 
 @pytest.mark.asyncio
