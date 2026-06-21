@@ -392,14 +392,27 @@ async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20,
                     "back will NOT restore a clean state. Restart from the app's home/launch state and perform ALL of "
                     "this case's steps from the beginning. Do not assume your current position.\n"
                 )
+            # Full chain as a numbered narrative so the single agent performs
+            # EVERY action (navigation nodes included), not just the ones with an
+            # expected. Per-step expecteds are inline guidance; the final node's
+            # expected is the hard pass/fail. (steps=[] -> single-agent mode, so
+            # the agent reads this goal incl. the transition instructions; strict
+            # checkpoint mode would ignore the narrative.)
+            step_lines = []
+            for i, item in enumerate(target.chain, 1):
+                line = f"{i}. {item.action}"
+                if item.expected:
+                    line += f"（期望: {item.expected}）"
+                step_lines.append(line)
+            steps_text = "\n".join(step_lines)
             goal = (
                 f"This is case {idx + 1}/{len(targets)} in a DFS run.\n"
                 f"{transition}"
-                f"STEPS: {flat.path}\n"
-                f"VERIFY: {flat.expected or '(no explicit expectation — completing the steps successfully is a pass)'}"
+                f"按顺序完成以下步骤：\n{steps_text}\n"
+                f"最终验证：{flat.expected or '完成上述全部步骤即视为通过（无额外结果验证）'}"
             )
             prev_node_id = target.node_id
-            case_data = TestCaseData(path=goal, expected=flat.expected, steps=list(flat.steps))
+            case_data = TestCaseData(path=goal, expected=flat.expected, steps=[])
 
             result_row = result_rows.get(target.node_id)
             agent = TestCaseAgent(
