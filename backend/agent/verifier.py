@@ -137,6 +137,24 @@ class LLMVerifier:
         # fall back to fresh if pre is not available
         verify_b64 = pre_b64 or fresh_b64
 
+        # Pull the live accessibility UI state too. Element labels (e.g. a like
+        # button reading "已点赞，70708个点赞") are authoritative for toggle states
+        # and exact counts that a screenshot often rounds (e.g. shows "7.1万"),
+        # which is otherwise the #1 source of false verification failures.
+        ui_state_section = ""
+        try:
+            ui_text, _ = await device.get_ui_state()
+            if ui_text:
+                ui_state_section = (
+                    "\n\nLive accessibility UI state (element labels read straight from "
+                    "the system — AUTHORITATIVE for toggle states like 已点赞 / 已收藏 / "
+                    "已关注 and for exact counts; the screenshot frequently rounds large "
+                    "numbers, e.g. displays '7.1万' where the label reads 70708):\n"
+                    + ui_text[:4000]
+                )
+        except Exception:
+            pass
+
         history_section = ""
         if action_history:
             recent = action_history[-10:]
@@ -192,7 +210,8 @@ class LLMVerifier:
                             f"STEP 2 — Compare to the expected result:\n"
                             f"Expected: {expected}"
                             f"{agent_reason_section}"
-                            f"{history_section}\n"
+                            f"{history_section}"
+                            f"{ui_state_section}\n"
                             "Does the evidence confirm the expected result?\n"
                             "Rules:\n"
                             "- For static outcomes: confirm TRUE only if the specific outcome "
@@ -202,6 +221,14 @@ class LLMVerifier:
                             "specific before/after values AND the screenshot is consistent with "
                             "the 'after' state. You do NOT need to see both before and after "
                             "on screen simultaneously.\n"
+                            "- Accessibility element labels are AUTHORITATIVE for toggle/"
+                            "activation state (已点赞 / 已收藏 / 已关注) and for exact counts. "
+                            "Trust them over an ambiguous icon colour or rounded pixel text.\n"
+                            "- A rounded or abbreviated on-screen number (e.g. '7.1万', '1.2k') "
+                            "that is NUMERICALLY CONSISTENT with a precise value (e.g. 70708 from "
+                            "an accessibility label) is NOT a contradiction — it is the same value "
+                            "shown coarsely. Never fail a pass merely because the screenshot rounds "
+                            "a number the agent or the UI label states precisely.\n"
                             "- If the page/content is DIFFERENT from what the expected result "
                             "describes, answer false.\n"
                             "- If the actions taken don't include the steps needed to produce "
