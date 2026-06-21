@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchNodes, addNode, updateNode, deleteNode, moveNode, StepNode,
@@ -91,11 +91,12 @@ function buildTree(nodes: StepNode[]): TreeNode[] {
 // ── One editable node row ───────────────────────────────────────────────────
 
 function NodeRow({
-  node, depth, suiteId, dragId, setDragId, onRunNode,
+  node, depth, suiteId, dragId, setDragId, onRunNode, collapsed, onToggleCollapse,
 }: {
   node: TreeNode; depth: number; suiteId: string
   dragId: string | null; setDragId: (id: string | null) => void
   onRunNode?: (nodeId: string) => void
+  collapsed: Set<string>; onToggleCollapse: (id: string) => void
 }) {
   const qc = useQueryClient()
   const invalidate = () => qc.invalidateQueries({ queryKey: ['nodes', suiteId] })
@@ -175,6 +176,17 @@ function NodeRow({
         }}
         title="拖动到另一个节点上 = 改挂到它下面"
       >
+        {node.children.length > 0 ? (
+          <button
+            className="text-ink-faint mt-0.5 w-3 flex-shrink-0 select-none hover:text-ink"
+            onClick={e => { e.stopPropagation(); onToggleCollapse(node.id) }}
+            title={collapsed.has(node.id) ? '展开' : '收起'}
+          >
+            {collapsed.has(node.id) ? '▸' : '▾'}
+          </button>
+        ) : (
+          <span className="w-3 flex-shrink-0" />
+        )}
         <span className="text-ink-faint mt-0.5 select-none cursor-grab">⋮⋮</span>
         <div className="flex-1 min-w-0">
           {node.ref_id ? (
@@ -226,9 +238,10 @@ function NodeRow({
                      onDone={() => setReusing(false)} />
       )}
       {showHistory && <NodeHistory nodeId={node.id} indentPx={16 + indent + 18} />}
-      {node.children.map(c => (
+      {!collapsed.has(node.id) && node.children.map(c => (
         <NodeRow key={c.id} node={c} depth={depth + 1} suiteId={suiteId}
-                 dragId={dragId} setDragId={setDragId} onRunNode={onRunNode} />
+                 dragId={dragId} setDragId={setDragId} onRunNode={onRunNode}
+                 collapsed={collapsed} onToggleCollapse={onToggleCollapse} />
       ))}
     </>
   )
@@ -333,15 +346,36 @@ export default function StepTreeEditor({ suiteId, onRunNode }: { suiteId: string
   const [reusingRoot, setReusingRoot] = useState(false)
   const [dragId, setDragId] = useState<string | null>(null)
 
+  // Collapse state (JSON-tree style), persisted per suite.
+  const ckey = `steptree-collapsed-${suiteId}`
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(`steptree-collapsed-${suiteId}`) || '[]')) } catch { return new Set() }
+  })
+  useEffect(() => { localStorage.setItem(ckey, JSON.stringify([...collapsed])) }, [collapsed, ckey])
+  const onToggleCollapse = (id: string) => setCollapsed(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
+  })
+  const parentIds = useMemo(() => new Set(nodes.filter(n => n.parent_id).map(n => n.parent_id as string)), [nodes])
+  const allCollapsed = parentIds.size > 0 && [...parentIds].every(id => collapsed.has(id))
+
   if (isLoading) return <div className="p-4 text-sm text-gray-400">加载步骤树…</div>
 
   return (
     <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
+      {parentIds.size > 0 && (
+        <div className="flex justify-end px-3 py-1.5 border-b bg-canvas-cool">
+          <button className="text-xs text-primary hover:text-primary-deep"
+                  onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(parentIds))}>
+            {allCollapsed ? '全部展开' : '全部收起'}
+          </button>
+        </div>
+      )}
       {tree.length === 0 && !addingRoot && (
         <div className="px-4 py-6 text-sm text-gray-400 text-center">还没有步骤。点下面「+ 根步骤」开始。</div>
       )}
       {tree.map(n => (
-        <NodeRow key={n.id} node={n} depth={0} suiteId={suiteId} dragId={dragId} setDragId={setDragId} onRunNode={onRunNode} />
+        <NodeRow key={n.id} node={n} depth={0} suiteId={suiteId} dragId={dragId} setDragId={setDragId}
+                 onRunNode={onRunNode} collapsed={collapsed} onToggleCollapse={onToggleCollapse} />
       ))}
       {reusingRoot && (
         <ReusePicker suiteId={suiteId} parentId={null} indentPx={16} onDone={() => setReusingRoot(false)} />
