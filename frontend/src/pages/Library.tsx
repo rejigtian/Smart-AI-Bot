@@ -1,37 +1,53 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import {
-  fetchSuites, searchNodes, fetchNodeUsageCounts, fetchNodeUsage, NodeSearchHit, NodeUsageRef,
-} from '../lib/api'
-import StepTreeEditor from '../components/StepTreeEditor'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { fetchSuites, fetchAllNodes, fetchNodeContext } from '../lib/api'
 
-// "Where used" popover for a reusable node.
-function UsagePanel({ nodeId, onClose }: { nodeId: string; onClose: () => void }) {
+const PAGE = 50
+
+// Right-hand detail: the selected node's parent, children, and referrers.
+function NodeContextPanel({ nodeId }: { nodeId: string }) {
   const navigate = useNavigate()
-  const { data: refs = [], isLoading } = useQuery({
-    queryKey: ['node-usage', nodeId],
-    queryFn: () => fetchNodeUsage(nodeId),
+  const { data: ctx, isLoading } = useQuery({
+    queryKey: ['node-context', nodeId],
+    queryFn: () => fetchNodeContext(nodeId),
   })
+  if (isLoading || !ctx) return <div className="p-4 text-sm text-gray-400">加载中…</div>
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl w-[560px] max-h-[70vh] overflow-auto p-5" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold">在哪些用例里被复用</h3>
-          <button className="text-ink-faint hover:text-ink" onClick={onClose}>✕</button>
-        </div>
-        {isLoading && <p className="text-sm text-gray-400">加载中…</p>}
-        {!isLoading && refs.length === 0 && <p className="text-sm text-gray-400">还没有被复用。</p>}
-        {refs.map((r: NodeUsageRef) => (
-          <button
-            key={r.node_id}
-            className="w-full text-left px-3 py-2 rounded hover:bg-gray-50 border-t text-sm"
-            onClick={() => navigate(`/suites/${r.suite_id}`)}
-          >
-            <span className={`text-[10px] px-1.5 py-0.5 rounded mr-2 ${r.kind === 'link' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+    <div className="p-4 space-y-4 text-sm">
+      <div>
+        <div className="text-xs text-gray-500 mb-1">完整路径 · {ctx.suite_name}</div>
+        <div className="font-mono text-xs break-words">{ctx.path}</div>
+      </div>
+
+      <div>
+        <div className="text-xs text-gray-500 mb-1">上一级（父步骤）</div>
+        {ctx.parent
+          ? <div className="px-2 py-1 rounded bg-gray-50">{ctx.parent.action}
+              {ctx.parent.expected && <span className="text-blue-600 text-xs"> · 期望:{ctx.parent.expected}</span>}</div>
+          : <div className="text-gray-400 text-xs">（根步骤，无父）</div>}
+      </div>
+
+      <div>
+        <div className="text-xs text-gray-500 mb-1">子步骤（{ctx.children.length}）</div>
+        {ctx.children.length === 0 && <div className="text-gray-400 text-xs">（叶子，无子步骤）</div>}
+        {ctx.children.map(c => (
+          <div key={c.node_id} className="px-2 py-1 rounded hover:bg-gray-50 border-t">
+            {c.action}{c.expected && <span className="text-blue-600 text-xs"> · 期望:{c.expected}</span>}
+          </div>
+        ))}
+      </div>
+
+      <div>
+        <div className="text-xs text-gray-500 mb-1">被复用 / 引用方（{ctx.referrers.length}）</div>
+        {ctx.referrers.length === 0 && <div className="text-gray-400 text-xs">（还没有被复用）</div>}
+        {ctx.referrers.map(r => (
+          <button key={r.node_id} className="w-full text-left px-2 py-1 rounded hover:bg-gray-50 border-t text-xs"
+                  onClick={() => navigate(`/suites/${r.suite_id}`)}>
+            <span className={`px-1.5 py-0.5 rounded mr-2 ${r.kind === 'link' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
               {r.kind === 'link' ? '活链接' : '快照拷贝'}
             </span>
-            <span className="font-mono text-xs">{r.path}</span>
+            <span className="font-mono">{r.path}</span>
             <span className="text-gray-400"> · {r.suite_name}</span>
           </button>
         ))}
@@ -42,64 +58,90 @@ function UsagePanel({ nodeId, onClose }: { nodeId: string; onClose: () => void }
 
 export default function Library() {
   const navigate = useNavigate()
-  const { data: suites = [] } = useQuery({ queryKey: ['suites'], queryFn: fetchSuites })
-  const { data: usage = {} } = useQuery({ queryKey: ['node-usage-counts'], queryFn: fetchNodeUsageCounts })
   const [q, setQ] = useState('')
-  const [usageNode, setUsageNode] = useState<string | null>(null)
-  const { data: hits = [] } = useQuery({
-    queryKey: ['node-search', q],
-    queryFn: () => (q.trim() ? searchNodes(q.trim()) : Promise.resolve([] as NodeSearchHit[])),
-    enabled: q.trim().length > 0,
-  })
+  const [suiteId, setSuiteId] = useState('')
+  const [page, setPage] = useState(0)
+  const [selected, setSelected] = useState<string | null>(null)
 
-  // Suites with the most-reused flows float to the top.
-  const orderedSuites = useMemo(() => {
-    return [...suites].sort((a, b) => a.name.localeCompare(b.name))
-  }, [suites])
+  const { data: suites = [] } = useQuery({ queryKey: ['suites'], queryFn: fetchSuites })
+  const { data, isFetching } = useQuery({
+    queryKey: ['nodes-all', q, suiteId, page],
+    queryFn: () => fetchAllNodes({ q: q.trim(), suite_id: suiteId, offset: page * PAGE, limit: PAGE }),
+    placeholderData: keepPreviousData,
+  })
+  const items = data?.items ?? []
+  const total = data?.total ?? 0
+  const pages = Math.max(1, Math.ceil(total / PAGE))
+  const reset = () => setPage(0)
 
   return (
     <div>
       <h1 className="text-2xl font-bold mb-1">用例库</h1>
-      <p className="text-sm text-gray-500 mb-4">
-        全库可复用流程 · 编辑这里的流程会同步到所有「活链接」引用方 · 🔁 = 被复用次数
-      </p>
+      <p className="text-sm text-gray-500 mb-4">全库步骤节点 · 选中看上级/子级/引用方 · 编辑流程会同步到所有「活链接」引用方</p>
 
-      <input
-        className="w-full max-w-xl border rounded px-3 py-2 text-sm mb-2"
-        placeholder="搜索全库流程（行为或期望），如「登录」「语音」"
-        value={q}
-        onChange={e => setQ(e.target.value)}
-      />
-      {q.trim() && (
-        <div className="bg-white border rounded-lg shadow-sm mb-6 max-w-xl overflow-hidden">
-          {hits.length === 0 && <div className="px-3 py-2 text-sm text-gray-400">没有匹配</div>}
-          {hits.map(h => (
-            <button key={h.node_id} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-t"
-                    onClick={() => navigate(`/suites/${h.suite_id}`)}>
-              <span className="font-mono text-xs">{h.path}</span>
-              {h.expected && <span className="text-blue-600"> · 期望:{h.expected}</span>}
-              <span className="text-gray-400"> · {h.suite_name}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="space-y-6">
-        {orderedSuites.map(s => (
-          <div key={s.id}>
-            <div className="flex items-baseline gap-2 mb-2">
-              <h2 className="font-semibold">{(s.name || '').replace(/\.xmind$/i, '')}</h2>
-              <button className="text-xs text-primary hover:text-primary-deep" onClick={() => navigate(`/suites/${s.id}`)}>
-                打开 →
-              </button>
-            </div>
-            <StepTreeEditor suiteId={s.id} usage={usage} onShowUsage={setUsageNode} />
-          </div>
-        ))}
-        {suites.length === 0 && <p className="text-sm text-gray-400">还没有套件。先在「测试套件」里导入或新建。</p>}
+      <div className="flex gap-2 mb-3">
+        <input
+          className="flex-1 border rounded px-3 py-2 text-sm"
+          placeholder="搜索行为或期望，如「登录」「语音」「点赞」"
+          value={q}
+          onChange={e => { setQ(e.target.value); reset() }}
+        />
+        <select className="border rounded px-2 text-sm" value={suiteId}
+                onChange={e => { setSuiteId(e.target.value); reset() }}>
+          <option value="">全部套件</option>
+          {suites.map(s => <option key={s.id} value={s.id}>{(s.name || '').replace(/\.xmind$/i, '')}</option>)}
+        </select>
       </div>
 
-      {usageNode && <UsagePanel nodeId={usageNode} onClose={() => setUsageNode(null)} />}
+      <div className="flex gap-4 items-start">
+        {/* Left: flat paginated node list */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+            <span>{total} 个节点{isFetching ? ' · 加载中…' : ''}</span>
+            <span className="flex items-center gap-2">
+              <button disabled={page <= 0} className="px-2 py-0.5 border rounded disabled:opacity-40"
+                      onClick={() => setPage(p => Math.max(0, p - 1))}>‹ 上一页</button>
+              <span>{page + 1} / {pages}</span>
+              <button disabled={page >= pages - 1} className="px-2 py-0.5 border rounded disabled:opacity-40"
+                      onClick={() => setPage(p => Math.min(pages - 1, p + 1))}>下一页 ›</button>
+            </span>
+          </div>
+          <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
+            {items.length === 0 && <div className="px-4 py-6 text-sm text-gray-400 text-center">没有匹配的节点。</div>}
+            {items.map(it => (
+              <button key={it.node_id}
+                      className={`w-full text-left px-3 py-2 border-t hover:bg-gray-50 ${selected === it.node_id ? 'bg-primary-soft' : ''}`}
+                      onClick={() => setSelected(it.node_id)}>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium flex-1 min-w-0 truncate">
+                    {it.is_link && <span className="text-blue-600">🔗 </span>}{it.action || '（空步骤）'}
+                  </span>
+                  {it.expected && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 flex-shrink-0">期望:{it.expected}</span>}
+                  {it.reuse_count > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 flex-shrink-0">🔁 {it.reuse_count}</span>}
+                </div>
+                <div className="text-[11px] text-gray-400 font-mono truncate">{it.path} · {it.suite_name}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Right: selected node context */}
+        <div className="w-96 flex-shrink-0 bg-white border rounded-lg shadow-sm sticky top-4">
+          {selected ? (
+            <>
+              <div className="flex items-center justify-between px-4 py-2 border-b">
+                <span className="text-sm font-semibold">节点详情</span>
+                <button className="text-xs text-primary" onClick={() => navigate(`/suites/${items.find(i => i.node_id === selected)?.suite_id}`)}>
+                  去所在套件编辑 →
+                </button>
+              </div>
+              <NodeContextPanel nodeId={selected} />
+            </>
+          ) : (
+            <div className="p-6 text-sm text-gray-400 text-center">从左侧选一个节点查看它的上级 / 子级 / 引用方。</div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

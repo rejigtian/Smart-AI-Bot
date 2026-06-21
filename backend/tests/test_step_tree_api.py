@@ -182,6 +182,27 @@ async def test_run_results_resolve_node_ids(client, session):
 
 
 @pytest.mark.asyncio
+async def test_nodes_all_and_context(client, session):
+    suite = TestSuite(name="s", source_format="manual"); session.add(suite); await session.flush()
+    n1 = StepNode(suite_id=suite.id, parent_id=None, action="登录", order=0); session.add(n1); await session.flush()
+    n2 = StepNode(suite_id=suite.id, parent_id=n1.id, action="进入语音页", expected="到达", order=0); session.add(n2); await session.flush()
+    # a link referencing n2 (so n2 has a referrer)
+    session.add(StepNode(suite_id=suite.id, parent_id=None, action="🔗", order=1, ref_id=n2.id))
+    await session.commit()
+
+    page = (await client.get("/api/nodes/all", params={"q": "语音"})).json()
+    assert page["total"] >= 1
+    hit = next(i for i in page["items"] if i["node_id"] == n2.id)
+    assert hit["path"] == "登录 > 进入语音页" and hit["reuse_count"] == 1
+
+    ctx = (await client.get(f"/api/nodes/{n2.id}/context")).json()
+    assert ctx["path"] == "登录 > 进入语音页"
+    assert ctx["parent"]["node_id"] == n1.id
+    assert ctx["children"] == []
+    assert len(ctx["referrers"]) == 1 and ctx["referrers"][0]["kind"] == "link"
+
+
+@pytest.mark.asyncio
 async def test_node_usage_stats(client, session):
     suite = TestSuite(name="s", source_format="manual"); session.add(suite); await session.flush()
     src = StepNode(suite_id=suite.id, parent_id=None, action="登录", order=0); session.add(src); await session.flush()

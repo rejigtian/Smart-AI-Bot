@@ -713,6 +713,107 @@ async def nodes_usage(db: AsyncSession = Depends(get_db)):
     return counts
 
 
+class NodeListItem(BaseModel):
+    node_id: str
+    suite_id: str
+    suite_name: str
+    action: str
+    expected: str
+    path: str
+    reuse_count: int
+    child_count: int
+    is_link: bool
+
+
+class NodeListPage(BaseModel):
+    total: int
+    items: List[NodeListItem]
+
+
+@nodes_router.get("/all", response_model=NodeListPage)
+async def list_all_nodes(q: str = "", suite_id: str = "", offset: int = 0,
+                         limit: int = 50, db: AsyncSession = Depends(get_db)):
+    """Flat, searchable, paginated list of every step node (the library catalog).
+    Sorted most-reused first. q matches the node's path or expected; suite_id filters."""
+    rows = (await db.execute(select(StepNode))).scalars().all()
+    suites = {s.id: s.name for s in (await db.execute(select(TestSuite))).scalars().all()}
+    reuse: dict = {}
+    child: dict = {}
+    by_suite: dict = {}
+    for r in rows:
+        if r.ref_id:
+            reuse[r.ref_id] = reuse.get(r.ref_id, 0) + 1
+        if r.source_id:
+            reuse[r.source_id] = reuse.get(r.source_id, 0) + 1
+        if r.parent_id:
+            child[r.parent_id] = child.get(r.parent_id, 0) + 1
+        by_suite.setdefault(r.suite_id, []).append(
+            NodeRow(id=r.id, parent_id=r.parent_id, action=r.action,
+                    expected=r.expected or "", order=r.order))
+    ql = q.strip().lower()
+    items: list = []
+    for r in rows:
+        if suite_id and r.suite_id != suite_id:
+            continue
+        path = " > ".join(c.action for c in chain_to_node(by_suite[r.suite_id], r.id))
+        if ql and ql not in (path + " " + (r.expected or "")).lower():
+            continue
+        items.append(NodeListItem(
+            node_id=r.id, suite_id=r.suite_id, suite_name=suites.get(r.suite_id, ""),
+            action=r.action, expected=r.expected or "", path=path,
+            reuse_count=reuse.get(r.id, 0), child_count=child.get(r.id, 0),
+            is_link=bool(r.ref_id),
+        ))
+    items.sort(key=lambda x: (-x.reuse_count, x.path))
+    return NodeListPage(total=len(items), items=items[offset:offset + limit])
+
+
+class NodeBrief(BaseModel):
+    node_id: str
+    action: str
+    expected: str
+
+
+class NodeContextOut(BaseModel):
+    node_id: str
+    suite_id: str
+    suite_name: str
+    path: str
+    parent: Optional[NodeBrief] = None
+    children: List[NodeBrief]
+    referrers: List[NodeUsageRef]
+
+
+@nodes_router.get("/{node_id}/context", response_model=NodeContextOut)
+async def node_context(node_id: str, db: AsyncSession = Depends(get_db)):
+    """A selected node's neighbourhood: its parent, its children, and every node
+    that reuses it (live link / snapshot copy)."""
+    node = await _require_node(node_id, db)
+    all_rows = (await db.execute(select(StepNode))).scalars().all()
+    by_id = {a.id: a for a in all_rows}
+    node_rows = [NodeRow(id=a.id, parent_id=a.parent_id, action=a.action,
+                         expected=a.expected or "", order=a.order) for a in all_rows]
+    suites = {s.id: s.name for s in (await db.execute(select(TestSuite))).scalars().all()}
+    path = " > ".join(c.action for c in chain_to_node(node_rows, node_id))
+    parent = by_id.get(node.parent_id)
+    children = [NodeBrief(node_id=a.id, action=a.action, expected=a.expected or "")
+                for a in all_rows if a.parent_id == node_id]
+    referrers = [
+        NodeUsageRef(
+            node_id=a.id, suite_id=a.suite_id, suite_name=suites.get(a.suite_id, ""),
+            path=" > ".join(c.action for c in chain_to_node(node_rows, a.id)),
+            kind="link" if a.ref_id == node_id else "copy",
+        )
+        for a in all_rows if a.ref_id == node_id or a.source_id == node_id
+    ]
+    return NodeContextOut(
+        node_id=node.id, suite_id=node.suite_id, suite_name=suites.get(node.suite_id, ""),
+        path=path,
+        parent=NodeBrief(node_id=parent.id, action=parent.action, expected=parent.expected or "") if parent else None,
+        children=children, referrers=referrers,
+    )
+
+
 @nodes_router.get("/{node_id}/usage", response_model=List[NodeUsageRef])
 async def node_usage(node_id: str, db: AsyncSession = Depends(get_db)):
     """Where a node is reused: nodes that live-link to it or were copied from it."""

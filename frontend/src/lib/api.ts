@@ -302,6 +302,36 @@ export const fetchNodeUsageCounts = () =>
 export const fetchNodeUsage = (nodeId: string) =>
   api.get<NodeUsageRef[]>(`/nodes/${nodeId}/usage`).then(r => r.data)
 
+export interface NodeListItem {
+  node_id: string
+  suite_id: string
+  suite_name: string
+  action: string
+  expected: string
+  path: string
+  reuse_count: number
+  child_count: number
+  is_link: boolean
+}
+
+export interface NodeBrief { node_id: string; action: string; expected: string }
+
+export interface NodeContext {
+  node_id: string
+  suite_id: string
+  suite_name: string
+  path: string
+  parent: NodeBrief | null
+  children: NodeBrief[]
+  referrers: NodeUsageRef[]
+}
+
+export const fetchAllNodes = (params: { q?: string; suite_id?: string; offset?: number; limit?: number }) =>
+  api.get<{ total: number; items: NodeListItem[] }>('/nodes/all', { params }).then(r => r.data)
+
+export const fetchNodeContext = (nodeId: string) =>
+  api.get<NodeContext>(`/nodes/${nodeId}/context`).then(r => r.data)
+
 // ── Settings ─────────────────────────────────────────────────────────────────
 
 export const fetchSettings = () => api.get<Settings>('/settings').then(r => r.data)
