@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchRun, fetchResults, fetchSteps, cancelRun, startRun, starResult, fetchDevices, TestResult, StepLog } from '../lib/api'
+import StepTreeResultView from '../components/StepTreeResultView'
 import LivePanel from '../components/LivePanel'
 import ScreenshotReplay from '../components/ScreenshotReplay'
 
@@ -175,37 +176,19 @@ export default function RunDetail() {
         {/* Left: results table */}
         <div>
           <h2 className="font-semibold mb-2 text-sm text-gray-600 uppercase tracking-wide">Results</h2>
-          <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
-            {results.length === 0 && (
+          {run?.suite_id ? (
+            <StepTreeResultView
+              suiteId={run.suite_id}
+              results={results}
+              selectedId={selected?.id}
+              onSelect={setSelected}
+              onStar={(id) => starMut.mutate(id)}
+            />
+          ) : (
+            <div className="bg-white border rounded-lg shadow-sm">
               <p className="text-sm text-gray-400 px-4 py-6 text-center">Waiting for results…</p>
-            )}
-            {results.map((r, i) => (
-              <div
-                key={r.id}
-                className={`flex items-center px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer ${
-                  i > 0 ? 'border-t' : ''
-                } ${selected?.id === r.id ? 'bg-primary-soft' : ''}`}
-                onClick={() => setSelected(r)}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start gap-2">
-                    <span className="mt-0.5 flex-shrink-0">{statusBadge(r.status)}</span>
-                    <span className="text-xs text-gray-500 break-words flex-1">{r.path}</span>
-                  </div>
-                  <div className="text-sm mt-1 break-words">{r.expected}</div>
-                </div>
-                <button
-                  title={r.is_starred ? '取消参考标记' : '标记为参考案例'}
-                  className={`ml-2 flex-shrink-0 text-base leading-none transition-colors ${
-                    r.is_starred ? 'text-yellow-400' : 'text-gray-300 hover:text-yellow-300'
-                  }`}
-                  onClick={(e) => { e.stopPropagation(); starMut.mutate(r.id) }}
-                >
-                  ★
-                </button>
-              </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Right: logs or case detail */}
