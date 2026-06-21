@@ -25,7 +25,7 @@ from core.run_memory import (
     task_keyword_for,
 )
 from core.run_recorder import RunRecorder
-from core.step_tree import NodeRow, RunTarget, backtrack_plan, chain_to_node, dfs_run_targets, flatten_chain
+from core.step_tree import NodeRow, RunTarget, backtrack_plan, chain_to_node, dfs_run_targets, flatten_chain, resolve_links
 from core.test_agent import CaseResult, TestCaseAgent
 from core.test_parser import Step, TestCaseData
 from db.database import AsyncSessionLocal
@@ -288,21 +288,36 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
         active_runs.pop(run_id, None)
 
 
+async def resolved_nodes_for_suite(session, suite_id: str) -> list:
+    """Load a suite's StepNode rows and expand any live-link nodes (resolve_links)."""
+    rows = (await session.execute(
+        select(StepNode).where(StepNode.suite_id == suite_id)
+    )).scalars().all()
+    suite_rows = [
+        NodeRow(id=r.id, parent_id=r.parent_id, action=r.action,
+                expected=r.expected or "", order=r.order, reversible=r.reversible,
+                ref_id=r.ref_id or "")
+        for r in rows
+    ]
+    if not any(r.ref_id for r in suite_rows):
+        return suite_rows
+    all_rows = (await session.execute(select(StepNode))).scalars().all()
+    all_by_id = {
+        a.id: NodeRow(id=a.id, parent_id=a.parent_id, action=a.action,
+                      expected=a.expected or "", order=a.order, reversible=a.reversible)
+        for a in all_rows
+    }
+    return resolve_links(suite_rows, all_by_id)
+
+
 async def node_targets_for_suite(session, suite_id: str, only_node_id: str = None) -> list:
-    """Return RunTargets for a suite's step-tree.
+    """Return RunTargets for a suite's step-tree (live links resolved).
 
     Default: one target per leaf, in DFS order. When `only_node_id` is given,
     return a single target = the root→that-node chain (the node may be a
     non-leaf), or [] if the node is unknown.
     """
-    rows = (await session.execute(
-        select(StepNode).where(StepNode.suite_id == suite_id)
-    )).scalars().all()
-    node_rows = [
-        NodeRow(id=r.id, parent_id=r.parent_id, action=r.action,
-                expected=r.expected or "", order=r.order)
-        for r in rows
-    ]
+    node_rows = await resolved_nodes_for_suite(session, suite_id)
     if only_node_id is not None:
         chain = chain_to_node(node_rows, only_node_id)
         return [RunTarget(node_id=only_node_id, chain=chain)] if chain else []
@@ -338,15 +353,8 @@ async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20,
             device_id, provider, model = run_row.device_id, run_row.provider, run_row.model
             suite_id = run_row.suite_id
             targets = await node_targets_for_suite(session, suite_id, only_node_id)
-            # Flat node rows (incl. reversible) for backtrack planning between branches.
-            _rows = (await session.execute(
-                select(StepNode).where(StepNode.suite_id == suite_id)
-            )).scalars().all()
-            node_rows = [
-                NodeRow(id=r.id, parent_id=r.parent_id, action=r.action,
-                        expected=r.expected or "", order=r.order, reversible=r.reversible)
-                for r in _rows
-            ]
+            # Resolved node rows (links expanded, incl. reversible) for backtrack planning.
+            node_rows = await resolved_nodes_for_suite(session, suite_id)
             res = await session.execute(select(TestResult).where(TestResult.run_id == run_id))
             result_rows = {r.case_id: r for r in res.scalars().all()}
 

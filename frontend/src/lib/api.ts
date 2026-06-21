@@ -235,6 +235,8 @@ export interface StepNode {
   order: number
   reversible: boolean
   loop_task: boolean
+  ref_id?: string | null   // set on a live-link node
+  ref_path?: string        // the source flow's path (for display)
 }
 
 export const fetchNodes = (suiteId: string) =>
@@ -274,8 +276,8 @@ export interface NodeSearchHit {
 export const searchNodes = (q: string) =>
   api.get<NodeSearchHit[]>('/nodes/search', { params: { q } }).then(r => r.data)
 
-export const copyNode = (suiteId: string, sourceNodeId: string, parentId: string | null) =>
-  api.post<StepNode[]>(`/suites/${suiteId}/nodes/copy`, { source_node_id: sourceNodeId, parent_id: parentId }).then(r => r.data)
+export const copyNode = (suiteId: string, sourceNodeId: string, parentId: string | null, link = false) =>
+  api.post<StepNode[]>(`/suites/${suiteId}/nodes/copy`, { source_node_id: sourceNodeId, parent_id: parentId, link }).then(r => r.data)
 
 export const fetchNodeResults = (nodeId: string) =>
   api.get<CaseResult[]>(`/nodes/${nodeId}/results`).then(r => r.data)

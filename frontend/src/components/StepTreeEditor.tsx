@@ -177,14 +177,21 @@ function NodeRow({
       >
         <span className="text-ink-faint mt-0.5 select-none cursor-grab">⋮⋮</span>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium">
-            {node.action || <span className="text-gray-400">（空步骤）</span>}
-            {node.expected
-              ? <span className="ml-2 align-middle px-1.5 py-0.5 text-[10px] rounded bg-blue-100 text-blue-700">期望: {node.expected}</span>
-              : <span className="ml-2 align-middle text-[10px] text-gray-400">执行成功即通过</span>}
-            {node.loop_task && <span className="ml-2 align-middle px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700">循环</span>}
-            {!node.reversible && <span className="ml-2 align-middle text-[10px]" title="不可回退">🔒</span>}
-          </div>
+          {node.ref_id ? (
+            <div className="text-sm font-medium text-blue-700">
+              🔗 链接：<span className="font-mono text-xs">{node.ref_path || '（源已失效）'}</span>
+              <span className="ml-2 text-[10px] text-gray-400">改源处即同步</span>
+            </div>
+          ) : (
+            <div className="text-sm font-medium">
+              {node.action || <span className="text-gray-400">（空步骤）</span>}
+              {node.expected
+                ? <span className="ml-2 align-middle px-1.5 py-0.5 text-[10px] rounded bg-blue-100 text-blue-700">期望: {node.expected}</span>
+                : <span className="ml-2 align-middle text-[10px] text-gray-400">执行成功即通过</span>}
+              {node.loop_task && <span className="ml-2 align-middle px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700">循环</span>}
+              {!node.reversible && <span className="ml-2 align-middle text-[10px]" title="不可回退">🔒</span>}
+            </div>
+          )}
         </div>
         <div className="flex gap-1 flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
           {onRunNode && (
@@ -195,12 +202,14 @@ function NodeRow({
             </button>
           )}
           <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setAdding(true)}>+ 步骤</button>
-          <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setReusing(true)}>复用</button>
-          <button className={`px-2 py-0.5 text-xs border rounded hover:bg-gray-100 ${showHistory ? 'bg-gray-100' : ''}`}
-                  onClick={() => setShowHistory(v => !v)} title="查看 / 清理这个节点的历史运行记录（影响下次运行的记忆）">
-            记录{showHistory ? ' ▾' : ' ▸'}
-          </button>
-          <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setEditing(true)}>编辑</button>
+          {!node.ref_id && <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setReusing(true)}>复用</button>}
+          {!node.ref_id && (
+            <button className={`px-2 py-0.5 text-xs border rounded hover:bg-gray-100 ${showHistory ? 'bg-gray-100' : ''}`}
+                    onClick={() => setShowHistory(v => !v)} title="查看 / 清理这个节点的历史运行记录（影响下次运行的记忆）">
+              记录{showHistory ? ' ▾' : ' ▸'}
+            </button>
+          )}
+          {!node.ref_id && <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setEditing(true)}>编辑</button>}
           <button className="px-2 py-0.5 text-xs border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-50"
                   disabled={delMut.isPending}
                   onClick={() => { if (confirm('删除这个节点？子节点会上提到它的父节点。')) delMut.mutate() }}>
@@ -232,18 +241,31 @@ function ReusePicker({ suiteId, parentId, indentPx, onDone }: {
 }) {
   const qc = useQueryClient()
   const [q, setQ] = useState('')
+  const [mode, setMode] = useState<'copy' | 'link'>('copy')
   const { data: hits = [] } = useQuery({
     queryKey: ['node-search', q],
     queryFn: () => (q.trim() ? searchNodes(q.trim()) : Promise.resolve([] as NodeSearchHit[])),
     enabled: q.trim().length > 0,
   })
   const copyMut = useMutation({
-    mutationFn: (sourceId: string) => copyNode(suiteId, sourceId, parentId),
+    mutationFn: (sourceId: string) => copyNode(suiteId, sourceId, parentId, mode === 'link'),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['nodes', suiteId] }); onDone() },
   })
   return (
     <div className="py-3 border-t bg-blue-50" style={{ paddingLeft: indentPx, paddingRight: 16 }}>
-      <div className="text-xs text-gray-500 mb-1">搜索用例库复用一段流程（插入为快照拷贝）</div>
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-xs text-gray-500">搜索用例库复用一段流程</span>
+        <div className="inline-flex rounded border text-[11px] overflow-hidden">
+          {(['copy', 'link'] as const).map(m => (
+            <button key={m} type="button"
+                    className={`px-2 py-0.5 ${mode === m ? 'bg-primary text-white' : 'bg-white text-ink-mute hover:bg-gray-50'}`}
+                    onClick={() => setMode(m)}>
+              {m === 'copy' ? '快照拷贝' : '活链接'}
+            </button>
+          ))}
+        </div>
+        <span className="text-[10px] text-gray-400">{mode === 'copy' ? '拷一份，之后独立' : '存源引用，改源即同步'}</span>
+      </div>
       <input autoFocus className="w-full border rounded px-2 py-1 text-sm mb-2"
              placeholder="搜索行为或期望，如「登录」「语音」" value={q} onChange={e => setQ(e.target.value)} />
       <div className="max-h-48 overflow-auto">

@@ -62,6 +62,8 @@ class NodeOut(BaseModel):
     order: int = 0
     reversible: bool = True
     loop_task: bool = False
+    ref_id: Optional[str] = None   # set on a live-link node
+    ref_path: str = ""             # the source's root→node path (for display)
 
 
 class NodeIn(BaseModel):
@@ -93,6 +95,7 @@ class NodeSearchHit(BaseModel):
 class CopyIn(BaseModel):
     source_node_id: str
     parent_id: Optional[str] = None
+    link: bool = False   # True = live link (one ref node); False = snapshot copy
 
 
 @router.get("", response_model=List[SuiteOut])
@@ -271,11 +274,11 @@ async def delete_case(suite_id: str, case_id: str, db: AsyncSession = Depends(ge
 
 # ── Step-tree node CRUD ────────────────────────────────────────────────────────
 
-def _node_out(n: StepNode) -> NodeOut:
+def _node_out(n: StepNode, ref_path: str = "") -> NodeOut:
     return NodeOut(
         id=n.id, suite_id=n.suite_id, parent_id=n.parent_id, action=n.action,
         expected=n.expected or "", order=n.order, reversible=n.reversible,
-        loop_task=n.loop_task,
+        loop_task=n.loop_task, ref_id=n.ref_id, ref_path=ref_path,
     )
 
 
@@ -294,7 +297,18 @@ async def list_nodes(suite_id: str, db: AsyncSession = Depends(get_db)):
         from db.migrate_step_tree import migrate_suite_to_step_tree
         if await migrate_suite_to_step_tree(db, suite_id):
             rows = await _load()
-    return [_node_out(n) for n in rows]
+    # For live-link nodes, resolve the source's path (cross-suite) for display.
+    ref_paths: dict = {}
+    link_targets = [r.ref_id for r in rows if r.ref_id]
+    if link_targets:
+        all_rows = (await db.execute(select(StepNode))).scalars().all()
+        node_rows = [NodeRow(id=a.id, parent_id=a.parent_id, action=a.action,
+                             expected=a.expected or "", order=a.order) for a in all_rows]
+        for r in rows:
+            if r.ref_id:
+                chain = chain_to_node(node_rows, r.ref_id)
+                ref_paths[r.id] = " > ".join(c.action for c in chain)
+    return [_node_out(n, ref_paths.get(n.id, "")) for n in rows]
 
 
 @router.post("/{suite_id}/nodes", response_model=NodeOut, status_code=201)
@@ -381,10 +395,28 @@ async def delete_node(suite_id: str, node_id: str, db: AsyncSession = Depends(ge
 
 @router.post("/{suite_id}/nodes/copy", response_model=List[NodeOut])
 async def copy_nodes(suite_id: str, body: CopyIn, db: AsyncSession = Depends(get_db)):
-    """Snapshot-copy a source node's root→node chain under parent_id in this suite."""
+    """Reuse a source flow under parent_id. link=False -> snapshot copy of the
+    source's root→node chain (new ids, source_id provenance). link=True -> one
+    live-link node (ref_id=source) that resolves to that chain at run time."""
     src = await db.get(StepNode, body.source_node_id)
     if not src:
         raise HTTPException(status_code=404, detail="Source node not found")
+    res = await db.execute(
+        select(func.max(StepNode.order))
+        .where(StepNode.suite_id == suite_id, StepNode.parent_id == body.parent_id)
+    )
+    base_order = (res.scalar() or -1) + 1
+
+    if body.link:
+        node = StepNode(suite_id=suite_id, parent_id=body.parent_id,
+                        action="🔗 链接", order=base_order, ref_id=body.source_node_id)
+        db.add(node); await db.commit(); await db.refresh(node)
+        all_rows = (await db.execute(select(StepNode))).scalars().all()
+        node_rows = [NodeRow(id=a.id, parent_id=a.parent_id, action=a.action,
+                             expected=a.expected or "", order=a.order) for a in all_rows]
+        ref_path = " > ".join(c.action for c in chain_to_node(node_rows, body.source_node_id))
+        return [_node_out(node, ref_path)]
+
     src_rows = (await db.execute(
         select(StepNode).where(StepNode.suite_id == src.suite_id)
     )).scalars().all()
@@ -394,22 +426,18 @@ async def copy_nodes(suite_id: str, body: CopyIn, db: AsyncSession = Depends(get
     head = clone_chain([ChainItem(c.action, c.expected) for c in chain])
     if head is None:
         raise HTTPException(status_code=400, detail="Source chain is empty")
-    res = await db.execute(
-        select(func.max(StepNode.order))
-        .where(StepNode.suite_id == suite_id, StepNode.parent_id == body.parent_id)
-    )
-    base_order = (res.scalar() or -1) + 1
     created: list = []
 
-    async def _persist(bn, parent_id, order):
+    async def _persist(bn, parent_id, order, src_id=None):
         row = StepNode(suite_id=suite_id, parent_id=parent_id, action=bn.action,
-                       expected=bn.expected, order=order)
+                       expected=bn.expected, order=order, source_id=src_id)
         db.add(row); await db.flush()
         created.append(row)
         for i, ch in enumerate(bn.children):
             await _persist(ch, row.id, i)
 
-    await _persist(head, body.parent_id, base_order)
+    # Stamp provenance on the copy's leaf (the reused target).
+    await _persist(head, body.parent_id, base_order, src_id=body.source_node_id)
     await db.commit()
     return [_node_out(n) for n in created]
 

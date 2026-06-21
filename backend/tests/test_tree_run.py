@@ -44,3 +44,22 @@ async def test_node_targets_single_node(session):
 
     # Unknown node -> no targets.
     assert await node_targets_for_suite(session, suite.id, only_node_id="missing") == []
+
+
+@pytest.mark.asyncio
+async def test_tree_run_resolves_live_link(session):
+    # Source suite: 登录 → 进入语音页
+    src = TestSuite(name="src", source_format="manual"); session.add(src); await session.flush()
+    s1 = StepNode(suite_id=src.id, parent_id=None, action="登录", order=0); session.add(s1); await session.flush()
+    s2 = StepNode(suite_id=src.id, parent_id=s1.id, action="进入语音页", order=0); session.add(s2); await session.flush()
+    # Target suite: a live link to s2, then the user's own step 点击录音
+    dst = TestSuite(name="dst", source_format="manual"); session.add(dst); await session.flush()
+    lk = StepNode(suite_id=dst.id, parent_id=None, action="🔗", order=0, ref_id=s2.id); session.add(lk); await session.flush()
+    own = StepNode(suite_id=dst.id, parent_id=lk.id, action="点击录音", expected="开始录音", order=0)
+    session.add(own); await session.commit()
+
+    targets = await node_targets_for_suite(session, dst.id)
+    assert len(targets) == 1
+    # The reused login→voice prefix is expanded ahead of the user's own step.
+    assert [c.action for c in targets[0].chain] == ["登录", "进入语音页", "点击录音"]
+    assert targets[0].node_id == own.id            # leaf result attaches to the user's own node
