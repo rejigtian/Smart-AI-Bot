@@ -48,11 +48,11 @@ function countLeaves(node: TreeNode): number {
   return node.cases.length + node.children.reduce((n, c) => n + countLeaves(c), 0)
 }
 
-// Pull the common root chain out so it shows once as a top breadcrumb.
+// Always render the common root chain as a normal (editable) TreeFolder.
+// Previously a single-common-root suite was special-cased into a read-only
+// breadcrumb bar, which—unlike the multi-branch case—hid the 编辑/批量跑
+// buttons. Treating single and multiple uniformly removes that asymmetry.
 function stripCommonRoot(root: TreeNode): { prefix: string; node: TreeNode } {
-  if (root.cases.length === 0 && root.children.length === 1 && root.children[0].children.length > 0) {
-    return { prefix: root.children[0].label, node: root.children[0] }
-  }
   return { prefix: '', node: root }
 }
 
