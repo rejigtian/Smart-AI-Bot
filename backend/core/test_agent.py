@@ -38,6 +38,16 @@ from core.test_parser import TestCaseData
 logger = logging.getLogger(__name__)
 
 
+def _readable_args(raw: str) -> str:
+    """Tool-call arguments come back from the model as a JSON string with
+    non-ASCII escaped (\\uXXXX). Re-serialize so CJK text shows as characters
+    in the report/replay. Falls back to the raw string if it isn't valid JSON."""
+    try:
+        return json.dumps(json.loads(raw), ensure_ascii=False)
+    except (ValueError, TypeError):
+        return raw
+
+
 def _redact_reference_args(fn_name: str, args: dict) -> dict:
     """Strip free-text *content* from a reference step so the agent reuses the
     step's structure, not its exact text.
@@ -1182,7 +1192,7 @@ class TestCaseAgent:
                 # left mark_done attempts invisible in the replay.
                 if tool_calls:
                     action_parts = [
-                        f"{tc.function.name}({tc.function.arguments})"
+                        f"{tc.function.name}({_readable_args(tc.function.arguments)})"
                         for tc in tool_calls
                     ]
                     result_parts = [
