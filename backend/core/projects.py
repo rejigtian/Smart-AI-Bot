@@ -39,7 +39,6 @@ def new_project(data: dict) -> dict:
         "name": (data.get("name") or "").strip() or "Untitled project",
         "app_package": (data.get("app_package") or "").strip(),
         "kb_path": (data.get("kb_path") or "").strip(),
-        "skills_path": (data.get("skills_path") or "").strip(),
         "source_root": (data.get("source_root") or "").strip(),
         # The project's own knowledge-search CLI (whatever its KB/skill exposes).
         # When set, it's used for retrieval instead of keyword search over kb_path.

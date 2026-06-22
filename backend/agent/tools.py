@@ -362,8 +362,9 @@ SOURCE_TOOLS: list[dict] = [
         "function": {
             "name": "read_source",
             "description": (
-                "Read a source file with line numbers, from `offset` for `limit` lines "
-                "(paginate large files). Path is relative to the app's source root."
+                "Read a SOURCE-CODE file (relative to the app's source root) with line numbers, "
+                "from `offset` for `limit` lines (paginate large files). For knowledge-base doc "
+                "paths from search_knowledge, use read_knowledge instead."
             ),
             "parameters": {
                 "type": "object",
@@ -390,7 +391,9 @@ KB_TOOLS: list[dict] = [
             "description": (
                 "Query the project's KNOWLEDGE BASE (business/UI flows, entry paths, known "
                 "pitfalls) when you're unsure where a feature lives or how to reach it — e.g. "
-                "'where is <feature>' or '<feature> entry path'. Returns ranked doc fragments. "
+                "'where is <feature>' or '<feature> entry path'. Returns ranked doc FRAGMENTS, "
+                "each with its doc path; long docs are truncated. To read a full doc, pass that "
+                "path to read_knowledge (NOT read_source — these are docs, not source files). "
                 "Prefer this over blind tapping when lost."
             ),
             "parameters": {
@@ -399,6 +402,29 @@ KB_TOOLS: list[dict] = [
                     "query": {"type": "string", "description": "What you want to know (keywords or a short question)."},
                 },
                 "required": ["query"],
+            },
+        },
+    },
+]
+
+# Appended when the profile has a kb_path (the KB docs live on disk). Reads the
+# full doc behind a search_knowledge fragment.
+KB_READ_TOOLS: list[dict] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "read_knowledge",
+            "description": (
+                "Read the FULL knowledge-base doc behind a search_knowledge fragment, by the "
+                "doc path it returned (e.g. 'features/voice-room/foo.md'). Use this — not "
+                "read_source — for knowledge-base paths."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Doc path as returned by search_knowledge."},
+                },
+                "required": ["path"],
             },
         },
     },

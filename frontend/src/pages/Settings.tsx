@@ -66,9 +66,8 @@ function ProjectCard({ project, onDelete }: { project: Project; onDelete: () => 
     <div className="border rounded-lg p-4 bg-white space-y-2">
       {field('名称 / Name', 'name', '项目名')}
       {field('应用包名 / app_package（匹配键）', 'app_package', 'com.example.app')}
-      {field('知识检索命令 / kb_search_cmd（优先，留空则用下方关键词检索）', 'kb_search_cmd', '项目自带的检索 CLI，如 `<cmd> "<query>" -n N`')}
-      {field('知识库路径 / kb_path（绝对路径，支持 ~/；无检索命令时的关键词兜底）', 'kb_path', '/Users/you/repo/knowledge 或 ~/repo/knowledge')}
-      {field('Skills 路径（暂未启用）', 'skills_path', '~/repo/skills')}
+      {field('知识检索命令 / kb_search_cmd（项目 skill 提供的检索 CLI；优先，留空则用下方关键词兜底）', 'kb_search_cmd', '如 `<cmd> "<query>" -n N`')}
+      {field('知识库路径 / kb_path（绝对路径，支持 ~/；用于读全文 + 无检索命令时的关键词兜底）', 'kb_path', '/Users/you/repo/knowledge 或 ~/repo/knowledge')}
       {field('源码路径 / source_root（卡点时 agent 可搜/读源码）', 'source_root', '~/repo/android-src')}
       <div className="flex gap-2 pt-1">
         <button

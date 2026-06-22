@@ -30,7 +30,7 @@ from agent.memory import AgentMemory
 from agent.perception import detect_elements_vlm
 from agent.planner import generate_plan, generate_subgoals
 from agent.prompt import SYSTEM_PROMPT
-from agent.tools import TOOLS, SOURCE_TOOLS, KB_TOOLS
+from agent.tools import TOOLS, SOURCE_TOOLS, KB_TOOLS, KB_READ_TOOLS
 from agent.verifier import LLMVerifier
 from core.test_parser import TestCaseData
 
@@ -317,6 +317,8 @@ class TestCaseAgent:
             self._tools += SOURCE_TOOLS
         if self.kb_search_cmd:
             self._tools += KB_TOOLS
+        if self.project_kb_roots:  # KB docs on disk → can read full docs
+            self._tools += KB_READ_TOOLS
         self.model = model
         self.api_key = api_key
         self.api_base = api_base
@@ -424,6 +426,9 @@ class TestCaseAgent:
             from core.kb_search import run_kb_search
             res = await asyncio.to_thread(run_kb_search, self.kb_search_cmd, args.get("query", ""), 5)
             return res or "No knowledge found for that query."
+        if fn_name == "read_knowledge":
+            from core.kb_search import read_kb_doc
+            return await asyncio.to_thread(read_kb_doc, self.project_kb_roots, args.get("path", ""))
         if fn_name == "read_source":
             from core.source_search import read_source
             return await asyncio.to_thread(

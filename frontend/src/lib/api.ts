@@ -350,7 +350,6 @@ export interface Project {
   name: string
   app_package: string
   kb_path: string
-  skills_path: string
   source_root: string
   kb_search_cmd: string
 }

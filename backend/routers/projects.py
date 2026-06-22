@@ -14,7 +14,6 @@ class ProjectOut(BaseModel):
     name: str
     app_package: str = ""
     kb_path: str = ""
-    skills_path: str = ""
     source_root: str = ""
     kb_search_cmd: str = ""
 
@@ -23,7 +22,6 @@ class ProjectIn(BaseModel):
     name: str = ""
     app_package: str = ""
     kb_path: str = ""
-    skills_path: str = ""
     source_root: str = ""
     kb_search_cmd: str = ""
 
