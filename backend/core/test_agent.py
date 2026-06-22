@@ -513,7 +513,8 @@ class TestCaseAgent:
                 matches: list = []
                 kb_raw = search_feature(kb_query, extra_roots=self.project_kb_roots, matches_out=matches)
                 if kb_raw and matches:
-                    kb_log = ", ".join(f"{m['title']}「{'项目' if m['source'] == 'project' else '本地'}」" for m in matches)
+                    _src = {"project": "项目", "note": "笔记"}
+                    kb_log = ", ".join(f"{m['title']}「{_src.get(m['source'], '本地')}」" for m in matches)
             except Exception:
                 pass
         if kb_raw:

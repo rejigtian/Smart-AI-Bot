@@ -151,6 +151,20 @@ def get_note(note_id: str) -> Optional[dict]:
     return next((n for n in list_notes() if n["id"] == note_id), None)
 
 
+def notes_for_search() -> list[dict]:
+    """Lightweight records for the agent's KB retrieval (title/body/keywords/
+    aliases). Every note participates — there is no per-note opt-out."""
+    return [
+        {
+            "title": n["title"],
+            "body": n.get("body", ""),
+            "keywords": n.get("keywords") or [],
+            "aliases": n.get("aliases") or [],
+        }
+        for n in list_notes()
+    ]
+
+
 def delete_note(note_id: str) -> bool:
     n = get_note(note_id)
     if not n:

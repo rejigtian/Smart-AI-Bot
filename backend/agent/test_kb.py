@@ -102,6 +102,32 @@ def _load_index() -> list[dict]:
     return _INDEX_CACHE
 
 
+def _index_notes() -> list[dict]:
+    """Index the user's dictated knowledge notes as searchable entries.
+
+    Notes carry their own keywords/aliases (organized by the LLM at capture
+    time), so they fold into the same keyword scoring as features. Read fresh
+    each call — notes change often and there are few of them."""
+    try:
+        from core.knowledge import notes_for_search
+        notes = notes_for_search()
+    except Exception:
+        return []
+    entries: list[dict] = []
+    for n in notes:
+        kws: set[str] = set()
+        for term in [n["title"], *(n.get("keywords") or []), *(n.get("aliases") or [])]:
+            for w in re.findall(r"[\w一-鿿]+", str(term)):
+                if len(w) >= 2:
+                    kws.add(w.lower())
+        entries.append({
+            "slug": "note", "module": "note", "path": None,
+            "title": n["title"], "keywords": kws,
+            "content": n.get("body", ""), "source": "note",
+        })
+    return entries
+
+
 def _score_match(query: str, entry: dict) -> int:
     """Score how well an entry matches the query."""
     query_lower = query.lower()
@@ -147,25 +173,26 @@ def search_feature(query: str, top_k: int = 1, extra_roots: Optional[list[str]] 
     Returns:
         Concatenated markdown content of top-k features, or empty string.
     """
-    entries = list(_load_index())
+    feature_entries = list(_load_index())
     for root in (extra_roots or []):
         try:
-            entries.extend(_index_dir(Path(root), source="project"))
+            feature_entries.extend(_index_dir(Path(root), source="project"))
         except Exception:
             continue
-    if not entries:
-        return ""
 
-    scored = [(_score_match(query, e), e) for e in entries]
-    scored.sort(key=lambda x: -x[0])
+    def _rank(entries: list[dict], k: int) -> list[tuple]:
+        scored = sorted(((_score_match(query, e), e) for e in entries), key=lambda x: -x[0])
+        return [(s, e) for s, e in scored[:k] if s >= 10]
 
-    # Only return matches with meaningful score
-    top = [(s, e) for s, e in scored[:top_k] if s >= 10]
+    # Features fill the top_k slots; matching notes are appended as extra
+    # context (capped) so a便利贴 never crowds out the relevant feature doc.
+    top = _rank(feature_entries, top_k) + _rank(_index_notes(), 3)
     if not top:
         return ""
 
     parts = []
     for score, entry in top:
+        is_note = entry.get("source") == "note"
         logger.info("Test KB match: %s/%s [%s] (score=%d)",
                     entry["module"], entry["slug"], entry.get("source", "local"), score)
         if matches_out is not None:
@@ -173,9 +200,10 @@ def search_feature(query: str, top_k: int = 1, extra_roots: Optional[list[str]] 
                 "title": entry["title"], "slug": entry["slug"],
                 "source": entry.get("source", "local"), "score": score,
             })
-        # Extract only the most useful sections for the agent
-        extracted = _extract_agent_relevant(entry["content"])
-        parts.append(f"# Test KB: {entry['title']}\n\n{extracted}")
+        # Notes are already tidy prose; features get section extraction.
+        extracted = entry["content"] if is_note else _extract_agent_relevant(entry["content"])
+        head = "Note" if is_note else "Test KB"
+        parts.append(f"# {head}: {entry['title']}\n\n{extracted}")
 
     return "\n\n---\n\n".join(parts)
 
