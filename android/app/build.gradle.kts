@@ -16,6 +16,19 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        // Shared debug keystore (checked into the repo). A debug keystore is not
+        // a secret — pinning it gives every machine the SAME signature, so the
+        // distributed APK installs/updates across environments without the
+        // "signatures do not match" error from per-machine ~/.android keys.
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
