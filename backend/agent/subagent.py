@@ -108,6 +108,9 @@ async def run_with_subagents(
             verifier_api_key=agent._verifier.api_key,
             verifier_api_base=agent._verifier.api_base,
             fallbacks=agent.fallbacks,
+            project_kb_roots=agent.project_kb_roots,
+            source_root=agent.source_root,
+            kb_search_cmd=agent.kb_search_cmd,
         )
 
         # Execute sub-goal in isolated context

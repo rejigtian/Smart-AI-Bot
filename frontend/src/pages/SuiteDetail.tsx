@@ -3,9 +3,42 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchSuite, fetchDevices, fetchSettings, fetchTrends, runTree, runNode,
-  TrendPoint, fetchRuns, deleteRun, Run,
+  TrendPoint, fetchRuns, deleteRun, Run, setSuiteAppPackage,
 } from '../lib/api'
 import StepTreeEditor from '../components/StepTreeEditor'
+
+function SuiteAppPackage({ suiteId, value }: { suiteId: string; value: string }) {
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [pkg, setPkg] = useState(value)
+  useEffect(() => setPkg(value), [value])
+  const mut = useMutation({
+    mutationFn: () => setSuiteAppPackage(suiteId, pkg.trim()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['suite', suiteId] }); setEditing(false) },
+  })
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        className="border rounded px-1.5 py-0.5 text-xs font-mono"
+        placeholder="com.example.app"
+        value={pkg}
+        onChange={e => setPkg(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') mut.mutate(); if (e.key === 'Escape') setEditing(false) }}
+        onBlur={() => mut.mutate()}
+      />
+    )
+  }
+  return (
+    <button
+      className="text-xs text-ink-faint hover:text-primary"
+      onClick={() => setEditing(true)}
+      title="设置目标应用包名（用于匹配「设置」里的项目档案，导入其知识库）"
+    >
+      目标应用: <span className="font-mono">{value || '未设置'}</span> ✎
+    </button>
+  )
+}
 
 const PROVIDERS = ['openai', 'anthropic', 'bedrock', 'google', 'zhipuai', 'groq', 'ollama']
 
@@ -225,7 +258,10 @@ export default function SuiteDetail() {
         {/* Left: test case list */}
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold mb-1">{(suite?.name || '').replace(/\.xmind$/i, '')}</h1>
-          <p className="text-sm text-gray-500 mb-3">步骤树 · 拖动节点改挂 · 悬停行可编辑 · 可运行单节点或整树</p>
+          <div className="flex items-center gap-3 mb-3">
+            <p className="text-sm text-gray-500">步骤树 · 拖动节点改挂 · 悬停行可编辑 · 可运行单节点或整树</p>
+            <SuiteAppPackage suiteId={suiteId!} value={suite?.app_package || ''} />
+          </div>
 
           <StepTreeEditor suiteId={suiteId!} onRunNode={onRunNode} />
 

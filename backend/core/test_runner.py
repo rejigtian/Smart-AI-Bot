@@ -82,6 +82,48 @@ class RunState:
 active_runs: dict[str, RunState] = {}
 
 
+# ── Project Profile KB ─────────────────────────────────────────────────────────
+
+async def _suite_app_package(suite_id: str) -> str:
+    try:
+        from db.models import TestSuite
+        async with AsyncSessionLocal() as session:
+            suite = await session.get(TestSuite, suite_id)
+        return suite.app_package if suite else ""
+    except Exception:
+        return ""
+
+
+async def _project_kb_roots(suite_id: str) -> list:
+    """Extra KB dirs from the Project Profile matching this suite's app_package.
+
+    Returns [] when the suite has no app_package, no profile matches, or the
+    profile's kb_path is missing — so runs behave exactly as before."""
+    try:
+        from core.projects import kb_roots_for
+        return kb_roots_for(await _suite_app_package(suite_id))
+    except Exception:
+        return []
+
+
+async def _project_source_root(suite_id: str) -> str:
+    """App source root from the matched Project Profile ('' when none/missing)."""
+    try:
+        from core.projects import source_root_for
+        return source_root_for(await _suite_app_package(suite_id))
+    except Exception:
+        return ""
+
+
+async def _project_kb_search_cmd(suite_id: str) -> str:
+    """Knowledge-search CLI from the matched Project Profile ('' when none)."""
+    try:
+        from core.projects import kb_search_cmd_for
+        return kb_search_cmd_for(await _suite_app_package(suite_id))
+    except Exception:
+        return ""
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 async def start_run(run_id: str, max_steps: int = 20, step_delay: float = 1.0, max_retries: int = 0) -> None:
@@ -136,10 +178,15 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
             if not run_row:
                 await emit("ERROR: run not found"); return
             device_id, provider, model = run_row.device_id, run_row.provider, run_row.model
+            suite_id = run_row.suite_id
             res = await session.execute(select(TestResult).where(TestResult.run_id == run_id))
             result_rows = {r.case_id: r for r in res.scalars().all()}
             cres = await session.execute(select(TestCase).where(TestCase.id.in_(case_ids)))
             case_map = {c.id: c for c in cres.scalars().all()}
+
+        project_kb_roots = await _project_kb_roots(suite_id)
+        project_source_root = await _project_source_root(suite_id)
+        project_kb_search_cmd = await _project_kb_search_cmd(suite_id)
 
         ordered = [cid for cid in case_ids if cid in case_map]
         safe = [cid for cid in ordered if not _is_destructive(f"{case_map[cid].path} {case_map[cid].expected}")]
@@ -220,6 +267,8 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
                 loop_task=case_row.loop_task,
                 reference_examples=reference_examples or None,
                 lessons_learned=lessons or None,
+                project_kb_roots=project_kb_roots, source_root=project_source_root,
+                kb_search_cmd=project_kb_search_cmd,
             )
             try:
                 case_result = await agent.run(case_data)
@@ -358,6 +407,10 @@ async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20,
             res = await session.execute(select(TestResult).where(TestResult.run_id == run_id))
             result_rows = {r.case_id: r for r in res.scalars().all()}
 
+        project_kb_roots = await _project_kb_roots(suite_id)
+        project_source_root = await _project_source_root(suite_id)
+        project_kb_search_cmd = await _project_kb_search_cmd(suite_id)
+
         conn = connected_devices.get(device_id)
         if conn is None or not conn.is_connected:
             await emit(f"ERROR: Device {device_id} is not connected"); return
@@ -446,6 +499,8 @@ async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20,
                 verifier_provider=v_provider, verifier_model=v_model,
                 verifier_api_key=v_key, verifier_api_base=v_base, fallbacks=fallbacks,
                 allow_subagents=False,
+                project_kb_roots=project_kb_roots, source_root=project_source_root,
+                kb_search_cmd=project_kb_search_cmd,
             )
             try:
                 case_result = await agent.run(case_data)
@@ -582,6 +637,9 @@ async def execute_run(
         fallbacks = _load_fallback_chain(provider, model)
         if fallbacks:
             await emit(f"Fallback models: {', '.join(t.label() for t in fallbacks)}")
+        project_kb_roots = await _project_kb_roots(run_row.suite_id)
+        project_source_root = await _project_source_root(run_row.suite_id)
+        project_kb_search_cmd = await _project_kb_search_cmd(run_row.suite_id)
 
         # Mark run as running
         async with AsyncSessionLocal() as session:
@@ -713,6 +771,8 @@ async def execute_run(
                 reference_examples=reference_examples or None,
                 lessons_learned=lessons or None,
                 fallbacks=fallbacks,
+                project_kb_roots=project_kb_roots, source_root=project_source_root,
+                kb_search_cmd=project_kb_search_cmd,
             )
 
             case_result: Optional[CaseResult] = None
@@ -750,6 +810,8 @@ async def execute_run(
                         loop_task=case_row.loop_task,
                         reference_examples=reference_examples or None,
                         fallbacks=fallbacks,
+                        project_kb_roots=project_kb_roots, source_root=project_source_root,
+                kb_search_cmd=project_kb_search_cmd,
                     )
                     continue
                 break  # pass or no retries left

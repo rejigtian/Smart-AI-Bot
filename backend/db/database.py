@@ -63,6 +63,10 @@ async def init_db():
             "ref_id": "VARCHAR",
         })
 
+        await _ensure_columns("test_suites", {
+            "app_package": "VARCHAR DEFAULT ''",
+        })
+
         # suite_id + task_keyword were added to LessonLearned after the table
         # first shipped. Without these, the lesson load/save queries reference
         # non-existent columns and silently fail — i.e. NO cross-run lessons at

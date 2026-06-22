@@ -18,6 +18,7 @@ export interface Suite {
   source_format: string
   case_count: number
   created_at: string
+  app_package?: string
 }
 
 export interface Run {
@@ -178,6 +179,7 @@ export const quickRun = (body: {
   provider: string
   model: string
   max_steps?: number
+  app_package?: string
 }) => api.post<Run>('/runs/quick', body).then(r => r.data)
 export const cancelRun = (id: string) => api.post(`/runs/${id}/cancel`)
 export const deleteRun = (id: string) => api.delete(`/runs/${id}`)
@@ -340,3 +342,25 @@ export const fetchNodeContext = (nodeId: string) =>
 export const fetchSettings = () => api.get<Settings>('/settings').then(r => r.data)
 export const saveSettings = (data: Partial<Settings>) =>
   api.put<Settings>('/settings', data).then(r => r.data)
+
+// ── Project Profiles (external KB / skills / source) ──────────────────────────
+
+export interface Project {
+  id: string
+  name: string
+  app_package: string
+  kb_path: string
+  skills_path: string
+  source_root: string
+  kb_search_cmd: string
+}
+
+export const fetchProjects = () => api.get<Project[]>('/projects').then(r => r.data)
+export const createProject = (data: Partial<Project>) =>
+  api.post<Project>('/projects', data).then(r => r.data)
+export const updateProject = (id: string, data: Partial<Project>) =>
+  api.put<Project>(`/projects/${id}`, data).then(r => r.data)
+export const deleteProject = (id: string) => api.delete(`/projects/${id}`)
+
+export const setSuiteAppPackage = (suiteId: string, app_package: string) =>
+  api.patch<Suite>(`/suites/${suiteId}`, { app_package }).then(r => r.data)

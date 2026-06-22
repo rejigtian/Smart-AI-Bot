@@ -59,6 +59,7 @@ class QuickRunRequest(BaseModel):
     max_steps: int = 20
     step_delay: float = 1.0
     max_retries: int = 0
+    app_package: str = ""  # optional — match a Project Profile to load its KB
 
 
 class RunOut(BaseModel):
@@ -245,7 +246,8 @@ async def quick_run(req: QuickRunRequest, db: AsyncSession = Depends(get_db)):
     if conn is None or not conn.is_connected:
         raise HTTPException(status_code=400, detail=f"Device {req.device_id} is not connected")
 
-    suite = TestSuite(name=f"快速任务: {req.goal[:60]}", source_format="manual")
+    suite = TestSuite(name=f"快速任务: {req.goal[:60]}", source_format="manual",
+                      app_package=req.app_package or "")
     db.add(suite)
     await db.flush()
 

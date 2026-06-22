@@ -28,6 +28,9 @@ class TestSuite(Base):
     name: Mapped[str] = mapped_column(String)
     source_format: Mapped[str] = mapped_column(String)  # xmind / markdown
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Target app package — used to match an optional Project Profile (external
+    # KB / skills / source) so the agent gets project-specific context.
+    app_package: Mapped[str] = mapped_column(String, default="")
 
     cases: Mapped[list["TestCase"]] = relationship(back_populates="suite", cascade="all, delete-orphan")
     runs: Mapped[list["TestRun"]] = relationship(back_populates="suite", cascade="all, delete-orphan")

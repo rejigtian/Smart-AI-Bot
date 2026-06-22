@@ -1,6 +1,9 @@
 import { useEffect, useState, ReactNode } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
-import { fetchSettings, saveSettings, Settings as SettingsData } from '../lib/api'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  fetchSettings, saveSettings, Settings as SettingsData,
+  fetchProjects, createProject, updateProject, deleteProject, Project,
+} from '../lib/api'
 
 const PROVIDER_MODELS: Record<string, string[]> = {
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
@@ -39,6 +42,85 @@ function isConfigured(form: Partial<SettingsData>, provider: string): boolean {
   // ollama only needs a base URL which has a default → always "ready"
   if (provider === 'ollama') return true
   return fields.some(f => !!(form[f.key] as string)?.trim())
+}
+
+function ProjectCard({ project, onDelete }: { project: Project; onDelete: () => void }) {
+  const qc = useQueryClient()
+  const [form, setForm] = useState<Project>(project)
+  const saveMut = useMutation({
+    mutationFn: () => updateProject(project.id, form),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['projects'] }),
+  })
+  const field = (label: string, key: keyof Project, ph: string) => (
+    <div>
+      <label className="text-xs text-gray-500">{label}</label>
+      <input
+        className="w-full border rounded px-2 py-1 text-sm font-mono"
+        placeholder={ph}
+        value={form[key]}
+        onChange={e => setForm({ ...form, [key]: e.target.value })}
+      />
+    </div>
+  )
+  return (
+    <div className="border rounded-lg p-4 bg-white space-y-2">
+      {field('名称 / Name', 'name', '项目名')}
+      {field('应用包名 / app_package（匹配键）', 'app_package', 'com.example.app')}
+      {field('知识检索命令 / kb_search_cmd（优先，留空则用下方关键词检索）', 'kb_search_cmd', '项目自带的检索 CLI，如 `<cmd> "<query>" -n N`')}
+      {field('知识库路径 / kb_path（绝对路径，支持 ~/；无检索命令时的关键词兜底）', 'kb_path', '/Users/you/repo/knowledge 或 ~/repo/knowledge')}
+      {field('Skills 路径（暂未启用）', 'skills_path', '~/repo/skills')}
+      {field('源码路径 / source_root（卡点时 agent 可搜/读源码）', 'source_root', '~/repo/android-src')}
+      <div className="flex gap-2 pt-1">
+        <button
+          className="px-3 py-1 bg-primary text-white text-xs rounded hover:bg-primary-deep disabled:opacity-50"
+          disabled={saveMut.isPending}
+          onClick={() => saveMut.mutate()}
+        >
+          {saveMut.isPending ? '保存中…' : '保存'}
+        </button>
+        <button
+          className="px-3 py-1 border border-red-200 text-red-600 text-xs rounded hover:bg-red-50"
+          onClick={() => { if (confirm('删除这个项目档案？')) onDelete() }}
+        >
+          删除
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ProjectProfiles() {
+  const qc = useQueryClient()
+  const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
+  const createMut = useMutation({
+    mutationFn: () => createProject({ name: '新项目' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['projects'] }),
+  })
+  const delMut = useMutation({
+    mutationFn: (id: string) => deleteProject(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['projects'] }),
+  })
+  return (
+    <div className="mt-8">
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-lg font-semibold">项目档案（可选）</h2>
+        <button
+          className="text-sm text-primary hover:text-primary-deep"
+          onClick={() => createMut.mutate()}
+        >
+          + 添加项目
+        </button>
+      </div>
+      <p className="text-xs text-gray-400 mb-3">
+        为某个 App 导入它自带的知识库 / skill / 源码路径，帮助 AI 更好地测试；不配置也照常运行。
+        与本地测试知识库相互独立。按「应用包名」匹配——在套件页给套件设置同样的包名即可生效。
+      </p>
+      {projects.length === 0 && <p className="text-sm text-gray-400">还没有项目档案。</p>}
+      <div className="space-y-3">
+        {projects.map(p => <ProjectCard key={p.id} project={p} onDelete={() => delMut.mutate(p.id)} />)}
+      </div>
+    </div>
+  )
 }
 
 export default function Settings() {
@@ -230,6 +312,8 @@ export default function Settings() {
           {saved ? '✓ Saved' : saveMut.isPending ? 'Saving…' : 'Save Settings'}
         </button>
       </div>
+
+      <ProjectProfiles />
     </div>
   )
 }

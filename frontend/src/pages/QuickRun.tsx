@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { fetchDevices, fetchSettings, quickRun } from '../lib/api'
+import { fetchDevices, fetchSettings, fetchProjects, quickRun } from '../lib/api'
 
 const PROVIDERS = ['openai', 'anthropic', 'bedrock', 'google', 'zhipuai', 'groq', 'ollama']
 
@@ -24,10 +24,12 @@ export default function QuickRun() {
   const [provider, setProvider] = useState('openai')
   const [model, setModel] = useState('gpt-4o')
   const [maxSteps, setMaxSteps] = useState(20)
+  const [appPackage, setAppPackage] = useState('')
   const settingsInitialized = useRef(false)
 
   const { data: devices = [] } = useQuery({ queryKey: ['devices'], queryFn: fetchDevices, refetchInterval: 5000 })
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings })
+  const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
 
   const onlineDevices = devices.filter(d => d.status === 'online')
 
@@ -58,6 +60,7 @@ export default function QuickRun() {
       provider,
       model,
       max_steps: maxSteps,
+      app_package: appPackage,
     }),
     onSuccess: run => navigate(`/runs/${run.id}`),
     onError: (e: unknown) => {
@@ -98,6 +101,24 @@ export default function QuickRun() {
             onChange={e => setExpected(e.target.value)}
           />
         </div>
+
+        {projects.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              项目知识库 <span className="text-gray-400 font-normal">（可选，导入对应项目档案的 KB）</span>
+            </label>
+            <select
+              className="w-full border rounded px-2 py-1.5 text-sm"
+              value={appPackage}
+              onChange={e => setAppPackage(e.target.value)}
+            >
+              <option value="">— 不使用 —</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.app_package}>{p.name}（{p.app_package}）</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <div>

@@ -27,6 +27,7 @@ class SuiteOut(BaseModel):
     source_format: str
     case_count: int
     created_at: str
+    app_package: str = ""
 
 
 class CaseOut(BaseModel):
@@ -114,6 +115,7 @@ async def list_suites(db: AsyncSession = Depends(get_db)):
             source_format=s.source_format,
             case_count=count,
             created_at=s.created_at.isoformat(),
+            app_package=s.app_package or "",
         ))
     return out
 
@@ -164,6 +166,30 @@ async def upload_suite(
         source_format=suite.source_format,
         case_count=len(cases),
         created_at=suite.created_at.isoformat(),
+        app_package=suite.app_package or "",
+    )
+
+
+class SuitePatch(BaseModel):
+    app_package: str = ""
+
+
+@router.patch("/{suite_id}", response_model=SuiteOut)
+async def update_suite(suite_id: str, body: SuitePatch, db: AsyncSession = Depends(get_db)):
+    """Set the suite's target app package (used to match a Project Profile)."""
+    suite = await db.get(TestSuite, suite_id)
+    if not suite:
+        raise HTTPException(status_code=404, detail="Suite not found")
+    suite.app_package = (body.app_package or "").strip()
+    await db.commit()
+    await db.refresh(suite)
+    count = len((await db.execute(
+        select(TestCase).where(TestCase.suite_id == suite_id)
+    )).scalars().all())
+    return SuiteOut(
+        id=suite.id, name=suite.name, source_format=suite.source_format,
+        case_count=count, created_at=suite.created_at.isoformat(),
+        app_package=suite.app_package or "",
     )
 
 
@@ -182,6 +208,7 @@ async def get_suite(suite_id: str, db: AsyncSession = Depends(get_db)):
         source_format=suite.source_format,
         case_count=count,
         created_at=suite.created_at.isoformat(),
+        app_package=suite.app_package or "",
     )
 
 

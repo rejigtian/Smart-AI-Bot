@@ -103,9 +103,12 @@ async def generate_plan(
     api_key: str = "",
     api_base: str = "",
     fallbacks: Optional[list] = None,
+    kb_context: str = "",
 ) -> Optional[str]:
     """Generate a text execution plan (Phase 1 — injected as pinned message).
 
+    `kb_context` (optional) is project knowledge retrieved up-front (e.g. entry
+    paths from the project's KB) so the plan can route to the right tab/screen.
     Returns the plan as a formatted string, or None if the task is too simple.
     """
     if len(path) < 30 and ">" not in path and "\n" not in path:
@@ -113,6 +116,11 @@ async def generate_plan(
         return None
 
     task_description = f"Test case: {path}\nExpected result: {expected}"
+    if kb_context:
+        task_description += (
+            "\n\n[Project knowledge — use it to choose the right entry path/tab/screen]\n"
+            + kb_context[:2500]
+        )
 
     try:
         response = await resilient_completion(

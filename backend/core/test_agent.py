@@ -30,7 +30,7 @@ from agent.memory import AgentMemory
 from agent.perception import detect_elements_vlm
 from agent.planner import generate_plan, generate_subgoals
 from agent.prompt import SYSTEM_PROMPT
-from agent.tools import TOOLS
+from agent.tools import TOOLS, SOURCE_TOOLS, KB_TOOLS
 from agent.verifier import LLMVerifier
 from core.test_parser import TestCaseData
 
@@ -302,9 +302,21 @@ class TestCaseAgent:
         fallbacks: Optional[list] = None,  # list[ModelTarget] for resilient_completion
         allow_subagents: bool = True,  # decompose complex tasks into sub-agents
         loop_task: bool = False,  # inherently repetitive task (quiz/bulk) — skip L4 backstop
+        project_kb_roots: Optional[list] = None,  # extra KB dirs from a Project Profile
+        source_root: str = "",  # app source root for search_source/read_source tools
+        kb_search_cmd: str = "",  # project KB search CLI from the profile (project-specific)
     ):
         self.device = device
         self.provider = provider
+        self.project_kb_roots: list = project_kb_roots or []
+        self.source_root: str = source_root or ""
+        self.kb_search_cmd: str = kb_search_cmd or ""
+        # Conditionally expose extra tools based on the matched Project Profile.
+        self._tools = list(TOOLS)
+        if self.source_root:
+            self._tools += SOURCE_TOOLS
+        if self.kb_search_cmd:
+            self._tools += KB_TOOLS
         self.model = model
         self.api_key = api_key
         self.api_base = api_base
@@ -357,7 +369,7 @@ class TestCaseAgent:
         """Model-agnostic completion kwargs (model/api_key injected per target)."""
         return {
             "messages": messages,
-            "tools": TOOLS,
+            "tools": self._tools,
             "tool_choice": "auto",
         }
 
@@ -399,6 +411,25 @@ class TestCaseAgent:
             secs = min(float(args.get("seconds", 2)), 10)
             await asyncio.sleep(secs)
             return f"Waited {secs:.1f}s"
+        if fn_name == "search_source":
+            from core.source_search import search_source
+            return await asyncio.to_thread(
+                search_source, self.source_root, args.get("query", ""),
+                int(args.get("context", 2) or 2), args.get("glob", "") or "",
+            )
+        if fn_name == "glob_source":
+            from core.source_search import glob_source
+            return await asyncio.to_thread(glob_source, self.source_root, args.get("pattern", ""))
+        if fn_name == "search_knowledge":
+            from core.kb_search import run_kb_search
+            res = await asyncio.to_thread(run_kb_search, self.kb_search_cmd, args.get("query", ""), 5)
+            return res or "No knowledge found for that query."
+        if fn_name == "read_source":
+            from core.source_search import read_source
+            return await asyncio.to_thread(
+                read_source, self.source_root, args.get("path", ""),
+                int(args.get("offset", 1) or 1), int(args.get("limit", 400) or 400),
+            )
         return f"Unknown tool: {fn_name}"
 
     async def run(self, case: TestCaseData) -> CaseResult:
@@ -439,25 +470,45 @@ class TestCaseAgent:
                 lessons_lines.append(f"  {i}. {lesson}")
             lessons_message = "\n".join(lessons_lines)
 
-        # ── Test KB lookup — inject feature-specific knowledge ──────────
+        # ── Knowledge lookup — inject feature-specific knowledge ──────────
+        # Skip a boilerplate expected (e.g. quick-run default "任务完成") so it
+        # doesn't pollute retrieval by matching any doc mentioning "任务".
+        _BOILERPLATE = {"", "任务完成", "完成", "成功", "通过", "pass", "ok", "done"}
+        exp = "" if case.expected.strip() in _BOILERPLATE else case.expected
+        kb_query = f"{case.path} {exp}".strip()
         kb_message = ""
-        try:
-            from agent.test_kb import search_feature
-            kb_content = search_feature(f"{case.path} {case.expected}")
-            if kb_content:
-                kb_message = (
-                    "[Test Knowledge — feature-specific reference]\n\n"
-                    "This is domain knowledge about the feature you're testing. "
-                    "Use it to understand entry paths, key elements, expected UI, "
-                    "and known pitfalls. Adapt to the actual UI state.\n\n"
-                    + kb_content
-                )
-        except Exception as e:
-            pass  # KB not available — proceed without
+        kb_raw = ""          # raw knowledge text, also fed to the planner
+        kb_log = ""
+        # Preferred: the project's own search CLI (semantic). Falls back to the
+        # naive keyword search over local + project kb_path.
+        if self.kb_search_cmd:
+            try:
+                from core.kb_search import run_kb_search
+                kb_raw = await asyncio.to_thread(run_kb_search, self.kb_search_cmd, kb_query, 5)
+                if kb_raw:
+                    kb_log = f"项目检索 `{self.kb_search_cmd}`"
+            except Exception:
+                pass
+        if not kb_raw:
+            try:
+                from agent.test_kb import search_feature
+                matches: list = []
+                kb_raw = search_feature(kb_query, extra_roots=self.project_kb_roots, matches_out=matches)
+                if kb_raw and matches:
+                    kb_log = ", ".join(f"{m['title']}「{'项目' if m['source'] == 'project' else '本地'}」" for m in matches)
+            except Exception:
+                pass
+        if kb_raw:
+            kb_message = (
+                "[Test Knowledge — feature-specific reference]\n\n"
+                "Domain knowledge about the feature you're testing — entry paths, key "
+                "elements, expected UI, known pitfalls. Adapt to the actual UI state.\n\n"
+                + kb_raw
+            )
 
         await self._log(f"▶ Starting: {case.path} | expected: {case.expected}")
         if kb_message:
-            await self._log(f"  📚 Test KB loaded ({len(kb_message)} chars)")
+            await self._log(f"  📚 KB loaded ({len(kb_message)} chars): {kb_log}")
 
         # ── User-defined checkpoints (strict) ────────────────────────
         # When the test author provided explicit (action → expected) pairs
@@ -511,6 +562,7 @@ class TestCaseAgent:
                 self.provider, self.model,
                 self.api_key, self.api_base,
                 fallbacks=self.fallbacks,
+                kb_context=kb_raw,
             )
             if plan_text:
                 await self._log(f"  📋 Plan generated:\n{plan_text}")

@@ -163,9 +163,9 @@ TOOLS: list[dict] = [
         "function": {
             "name": "start_app",
             "description": (
-                "Launch an Android app by its exact package name (e.g. 'com.wepie.wespy'). "
-                "Do NOT guess the package name — if you only know the app's display name "
-                "(e.g. '我是卧底'), call list_packages() first to find its package. "
+                "Launch an Android app by its exact package name (e.g. 'com.android.settings'). "
+                "Do NOT guess the package name — if you only know the app's display name, "
+                "call list_packages() first to find its package. "
                 "Returns an ERROR if the package is not installed."
             ),
             "parameters": {
@@ -184,7 +184,7 @@ TOOLS: list[dict] = [
             "name": "list_packages",
             "description": (
                 "List installed, launchable apps as 'App Name | package.name' "
-                "(e.g. '我是卧底 | com.wepie.wespy'). "
+                "(e.g. 'Settings | com.android.settings'). "
                 "Call this whenever you need to open an app but only know its display name, "
                 "or when start_app() returns an ERROR. "
                 "Find the line whose App Name matches your target, then call start_app() "
@@ -308,6 +308,97 @@ TOOLS: list[dict] = [
                     },
                 },
                 "required": ["status", "reason"],
+            },
+        },
+    },
+]
+
+
+# Optional tools — appended only when the matched Project Profile has a valid
+# source_root. Let the agent read the app's source as a last resort when it
+# can't locate a feature/element from the UI alone.
+SOURCE_TOOLS: list[dict] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_source",
+            "description": (
+                "Grep the target app's SOURCE CODE (regex) with surrounding context. Use when "
+                "you can't find where a feature/screen/button lives from the UI — e.g. grep a "
+                "Chinese label to find its string-resource name, then grep that name to find the "
+                "screen/Activity. Iterate: search → read_source → search again. "
+                "Returns path:line plus context lines."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Regex/text to grep (e.g. a UI label or resource id)."},
+                    "context": {"type": "integer", "description": "Context lines around each match (0-6).", "default": 2},
+                    "glob": {"type": "string", "description": "Optional file filter, e.g. '*.xml' or '**/*Activity.kt'.", "default": ""},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "glob_source",
+            "description": (
+                "Find SOURCE files by name/path glob — e.g. 'activity_backpack.xml', "
+                "'**/*Activity.kt', 'res/layout/*pay*'. Use to locate a file before reading it."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string", "description": "Glob pattern."},
+                },
+                "required": ["pattern"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_source",
+            "description": (
+                "Read a source file with line numbers, from `offset` for `limit` lines "
+                "(paginate large files). Path is relative to the app's source root."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "File path relative to the source root."},
+                    "offset": {"type": "integer", "description": "1-based start line.", "default": 1},
+                    "limit": {"type": "integer", "description": "Number of lines to read (max 400).", "default": 400},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+]
+
+
+# Optional — appended only when the matched Project Profile has a knowledge
+# search CLI (kb_search_cmd). Lets the agent query the project's own knowledge
+# base (semantic search) when stuck: "where is X / how do I reach Y".
+KB_TOOLS: list[dict] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_knowledge",
+            "description": (
+                "Query the project's KNOWLEDGE BASE (business/UI flows, entry paths, known "
+                "pitfalls) when you're unsure where a feature lives or how to reach it — e.g. "
+                "'where is <feature>' or '<feature> entry path'. Returns ranked doc fragments. "
+                "Prefer this over blind tapping when lost."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "What you want to know (keywords or a short question)."},
+                },
+                "required": ["query"],
             },
         },
     },
