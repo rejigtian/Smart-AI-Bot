@@ -33,6 +33,8 @@ class Settings(BaseModel):
     # Webhook notification after run completes
     webhook_url: Optional[str] = ""
     webhook_type: Optional[str] = ""  # feishu / dingtalk / slack / custom
+    # Main language for AI output (thoughts/reasons/verdicts/plans) + report: zh / en
+    language: Optional[str] = "zh"
 
 
 def _load() -> dict:

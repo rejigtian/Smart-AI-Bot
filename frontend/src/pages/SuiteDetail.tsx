@@ -6,8 +6,10 @@ import {
   TrendPoint, fetchRuns, deleteRun, Run, setSuiteAppPackage,
 } from '../lib/api'
 import StepTreeEditor from '../components/StepTreeEditor'
+import { useT } from '../lib/i18n'
 
 function SuiteAppPackage({ suiteId, value }: { suiteId: string; value: string }) {
+  const t = useT()
   const qc = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [pkg, setPkg] = useState(value)
@@ -33,9 +35,9 @@ function SuiteAppPackage({ suiteId, value }: { suiteId: string; value: string })
     <button
       className="text-xs text-ink-faint hover:text-primary"
       onClick={() => setEditing(true)}
-      title="设置目标应用包名（用于匹配「设置」里的项目档案，导入其知识库）"
+      title={t('设置目标应用包名（用于匹配「设置」里的项目档案，导入其知识库）', 'Set the target app package (used to match a project profile in Settings and import its knowledge base)')}
     >
-      目标应用: <span className="font-mono">{value || '未设置'}</span> ✎
+      {t('目标应用', 'Target app')}: <span className="font-mono">{value || t('未设置', 'not set')}</span> ✎
     </button>
   )
 }
@@ -44,6 +46,7 @@ const PROVIDERS = ['openai', 'anthropic', 'bedrock', 'google', 'zhipuai', 'groq'
 
 
 function TrendChart({ trends }: { trends: TrendPoint[] }) {
+  const tr = useT()
   const W = 640, H = 170
   const padL = 30, padR = 16, padT = 16, padB = 28
   const innerW = W - padL - padR, innerH = H - padT - padB
@@ -82,7 +85,7 @@ function TrendChart({ trends }: { trends: TrendPoint[] }) {
           <circle cx={xAt(i)} cy={yAt(t.pass_rate)} r={i === n - 1 ? 4.5 : 3}
                   fill={dotColor(t.pass_rate)} stroke="#fff" strokeWidth="1.5">
             <title>
-              {`${new Date(t.created_at).toLocaleString()}\n${t.model || t.provider}\n通过 ${t.passed}/${t.total} · 失败 ${t.failed} · 错误 ${t.errored} (${t.pass_rate}%)`}
+              {`${new Date(t.created_at).toLocaleString()}\n${t.model || t.provider}\n${tr('通过', 'Pass')} ${t.passed}/${t.total} · ${tr('失败', 'Fail')} ${t.failed} · ${tr('错误', 'Error')} ${t.errored} (${t.pass_rate}%)`}
             </title>
           </circle>
           {(i === n - 1 || i % labelEvery === 0) && (
@@ -113,6 +116,7 @@ const RUN_STATUS_STYLE: Record<string, string> = {
 const RUN_TERMINAL = new Set(['done', 'error', 'cancelled'])
 
 function SuiteRuns({ suiteId }: { suiteId: string }) {
+  const t = useT()
   const qc = useQueryClient()
   const navigate = useNavigate()
   const { data: runs = [] } = useQuery({
@@ -135,8 +139,8 @@ function SuiteRuns({ suiteId }: { suiteId: string }) {
   return (
     <div className="mt-6">
       <div className="flex items-baseline justify-between mb-2">
-        <h2 className="text-sm font-semibold text-ink-secondary">运行历史</h2>
-        <span className="text-xs text-ink-faint">{runs.length} 次 · 删除整次运行会一并清掉它的用例结果与记忆</span>
+        <h2 className="text-sm font-semibold text-ink-secondary">{t('运行历史', 'Run history')}</h2>
+        <span className="text-xs text-ink-faint">{runs.length} {t('次 · 删除整次运行会一并清掉它的用例结果与记忆', 'runs · deleting a whole run also clears its case results and memory')}</span>
       </div>
       <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
         {runs.map((r, i) => (
@@ -151,10 +155,10 @@ function SuiteRuns({ suiteId }: { suiteId: string }) {
                 <span className="text-xs text-ink-faint font-mono truncate">{r.model}</span>
               </div>
               <div className="flex gap-3 mt-0.5 text-xs">
-                <span className="text-ok">{r.passed} 通过</span>
-                <span className="text-red-600">{r.failed} 失败</span>
-                {r.errored > 0 && <span className="text-orange-600">{r.errored} 错误</span>}
-                {r.skipped > 0 && <span className="text-gray-500">{r.skipped} 跳过</span>}
+                <span className="text-ok">{r.passed} {t('通过', 'pass')}</span>
+                <span className="text-red-600">{r.failed} {t('失败', 'fail')}</span>
+                {r.errored > 0 && <span className="text-orange-600">{r.errored} {t('错误', 'error')}</span>}
+                {r.skipped > 0 && <span className="text-gray-500">{r.skipped} {t('跳过', 'skip')}</span>}
                 <span className="text-ink-faint">/ {r.total}</span>
                 {r.total_tokens > 0 && <span className="text-primary">{(r.total_tokens / 1000).toFixed(1)}k tok</span>}
               </div>
@@ -162,10 +166,10 @@ function SuiteRuns({ suiteId }: { suiteId: string }) {
             <button
               className="px-2 py-0.5 text-xs border border-red-200 text-red-600 rounded hover:bg-red-50 opacity-0 group-hover:opacity-100 flex-shrink-0 disabled:opacity-40"
               disabled={del.isPending}
-              onClick={() => { if (confirm('删除整次运行记录？该次运行的所有用例结果和由它产生的记忆都会一并删除。')) del.mutate(r.id) }}
-              title="删除整次运行（含其用例结果 + 派生记忆）"
+              onClick={() => { if (confirm(t('删除整次运行记录？该次运行的所有用例结果和由它产生的记忆都会一并删除。', 'Delete this entire run? All its case results and the memory it produced will be deleted too.'))) del.mutate(r.id) }}
+              title={t('删除整次运行（含其用例结果 + 派生记忆）', 'Delete the entire run (including its case results + derived memory)')}
             >
-              🗑 删除
+              🗑 {t('删除', 'Delete')}
             </button>
           </div>
         ))}
@@ -177,6 +181,7 @@ function SuiteRuns({ suiteId }: { suiteId: string }) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function SuiteDetail() {
+  const t = useT()
   const { suiteId } = useParams<{ suiteId: string }>()
   const navigate = useNavigate()
 
@@ -231,7 +236,7 @@ export default function SuiteDetail() {
     onSuccess: run => navigate(`/runs/${run.id}`),
     onError: (e: unknown) => {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || String(e)
-      alert(`步骤树运行启动失败: ${msg}`)
+      alert(`${t('步骤树运行启动失败', 'Failed to start step-tree run')}: ${msg}`)
     },
   })
 
@@ -240,18 +245,18 @@ export default function SuiteDetail() {
     onSuccess: run => navigate(`/runs/${run.id}`),
     onError: (e: unknown) => {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || String(e)
-      alert(`节点运行启动失败: ${msg}`)
+      alert(`${t('节点运行启动失败', 'Failed to start node run')}: ${msg}`)
     },
   })
   const onRunNode = (nodeId: string) => {
-    if (!deviceId) { alert('请先在右侧选择设备'); return }
+    if (!deviceId) { alert(t('请先在右侧选择设备', 'Please select a device on the right first')); return }
     nodeRunMut.mutate(nodeId)
   }
 
   return (
     <div>
       <button className="text-sm text-primary hover:underline mb-4 block" onClick={() => navigate('/suites')}>
-        ← 返回套件列表
+        ← {t('返回套件列表', 'Back to suite list')}
       </button>
 
       <div className="flex items-start gap-8">
@@ -259,7 +264,7 @@ export default function SuiteDetail() {
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold mb-1">{(suite?.name || '').replace(/\.xmind$/i, '')}</h1>
           <div className="flex items-center gap-3 mb-3">
-            <p className="text-sm text-gray-500">步骤树 · 拖动节点改挂 · 悬停行可编辑 · 可运行单节点或整树</p>
+            <p className="text-sm text-gray-500">{t('步骤树 · 拖动节点改挂 · 悬停行可编辑 · 可运行单节点或整树', 'Step tree · drag nodes to re-parent · hover a row to edit · run a single node or the whole tree')}</p>
             <SuiteAppPackage suiteId={suiteId!} value={suite?.app_package || ''} />
           </div>
 
@@ -269,9 +274,9 @@ export default function SuiteDetail() {
           {trends.length >= 2 && (
             <div className="mt-6">
               <div className="flex items-baseline justify-between mb-2">
-                <h2 className="text-sm font-semibold text-ink-secondary">通过率趋势</h2>
+                <h2 className="text-sm font-semibold text-ink-secondary">{t('通过率趋势', 'Pass-rate trend')}</h2>
                 <span className="text-xs text-ink-faint">
-                  最近 {trends.length} 次 · 最新 {trends[trends.length - 1].pass_rate.toFixed(0)}%
+                  {t('最近', 'last')} {trends.length} {t('次 · 最新', 'runs · latest')} {trends[trends.length - 1].pass_rate.toFixed(0)}%
                 </span>
               </div>
               <div className="bg-white border rounded-lg p-3 shadow-sm">
@@ -287,18 +292,18 @@ export default function SuiteDetail() {
         {/* Right: run config */}
         <div className="w-72 flex-shrink-0">
           <div className="bg-white border rounded-lg p-5 shadow-sm">
-            <h2 className="font-semibold mb-4">开始运行</h2>
+            <h2 className="font-semibold mb-4">{t('开始运行', 'Start run')}</h2>
 
-            <label className="block text-sm font-medium mb-1">设备</label>
+            <label className="block text-sm font-medium mb-1">{t('设备', 'Device')}</label>
             {onlineDevices.length === 0 ? (
-              <p className="text-sm text-red-500 mb-3">无在线设备，请先连接设备。</p>
+              <p className="text-sm text-red-500 mb-3">{t('无在线设备，请先连接设备。', 'No online devices. Please connect a device first.')}</p>
             ) : (
               <select
                 className="w-full border rounded px-2 py-1.5 text-sm mb-3"
                 value={deviceId}
                 onChange={e => setDeviceId(e.target.value)}
               >
-                <option value="">— 选择设备 —</option>
+                <option value="">{t('— 选择设备 —', '— Select device —')}</option>
                 {onlineDevices.map(d => (
                   <option key={d.id} value={d.id}>{d.name}</option>
                 ))}
@@ -321,7 +326,7 @@ export default function SuiteDetail() {
               onChange={e => setModel(e.target.value)}
             />
 
-            <label className="block text-sm font-medium mb-1">每条用例最大步数</label>
+            <label className="block text-sm font-medium mb-1">{t('每条用例最大步数', 'Max steps per case')}</label>
             <input
               type="number"
               className="w-full border rounded px-2 py-1.5 text-sm mb-3"
@@ -335,12 +340,12 @@ export default function SuiteDetail() {
               className="w-full bg-primary text-white py-2 rounded font-medium hover:bg-primary-deep disabled:opacity-50"
               disabled={!deviceId || treeRunMut.isPending}
               onClick={() => treeRunMut.mutate()}
-              title="按步骤树做一次深度优先遍历，逐个叶子用例运行；共享前缀只导航一次"
+              title={t('按步骤树做一次深度优先遍历，逐个叶子用例运行；共享前缀只导航一次', 'Run a depth-first traversal of the step tree, running each leaf case one by one; shared prefixes are navigated only once')}
             >
-              {treeRunMut.isPending ? '启动中…' : '▶ 运行步骤树（DFS）'}
+              {treeRunMut.isPending ? t('启动中…', 'Starting…') : t('▶ 运行步骤树（DFS）', '▶ Run step tree (DFS)')}
             </button>
             <p className="mt-2 text-xs text-ink-faint">
-              单独跑某个节点：在左侧树里 hover 该节点 → 点「▶ 运行」。
+              {t('单独跑某个节点：在左侧树里 hover 该节点 → 点「▶ 运行」。', 'To run a single node: hover that node in the tree on the left → click "▶ Run".')}
             </p>
           </div>
         </div>

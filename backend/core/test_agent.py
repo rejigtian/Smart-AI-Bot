@@ -30,6 +30,7 @@ from agent.memory import AgentMemory
 from agent.perception import detect_elements_vlm
 from agent.planner import generate_plan, generate_subgoals
 from agent.prompt import SYSTEM_PROMPT
+from core.i18n import current_language, lang_directive
 from agent.tools import TOOLS, SOURCE_TOOLS, KB_TOOLS, KB_READ_TOOLS
 from agent.verifier import LLMVerifier
 from core.test_parser import TestCaseData
@@ -305,12 +306,14 @@ class TestCaseAgent:
         project_kb_roots: Optional[list] = None,  # extra KB dirs from a Project Profile
         source_root: str = "",  # app source root for search_source/read_source tools
         kb_search_cmd: str = "",  # project KB search CLI from the profile (project-specific)
+        language: str = "",  # AI output language; defaults to the global setting
     ):
         self.device = device
         self.provider = provider
         self.project_kb_roots: list = project_kb_roots or []
         self.source_root: str = source_root or ""
         self.kb_search_cmd: str = kb_search_cmd or ""
+        self.language: str = language or current_language()
         # Conditionally expose extra tools based on the matched Project Profile.
         self._tools = list(TOOLS)
         if self.source_root:
@@ -334,7 +337,7 @@ class TestCaseAgent:
         v_model = verifier_model or model
         v_key = verifier_api_key or api_key
         v_base = verifier_api_base or api_base
-        self._verifier = LLMVerifier(v_provider, v_model, v_key, v_base, fallbacks=self.fallbacks)
+        self._verifier = LLMVerifier(v_provider, v_model, v_key, v_base, fallbacks=self.fallbacks, language=self.language)
         self._reference_examples: list = reference_examples or []
         self._lessons_learned: list = lessons_learned or []
 
@@ -550,6 +553,7 @@ class TestCaseAgent:
                     self.provider, self.model,
                     self.api_key, self.api_base,
                     fallbacks=self.fallbacks,
+                    language=self.language,
                 )
                 if self.allow_subagents else None
             )
@@ -568,6 +572,7 @@ class TestCaseAgent:
                 self.api_key, self.api_base,
                 fallbacks=self.fallbacks,
                 kb_context=kb_raw,
+                language=self.language,
             )
             if plan_text:
                 await self._log(f"  📋 Plan generated:\n{plan_text}")
@@ -576,7 +581,7 @@ class TestCaseAgent:
             await self._log(f"  Planner skipped: {e}")
 
         init_messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": SYSTEM_PROMPT + lang_directive(self.language)},
             {"role": "user", "content": goal},
         ]
         if kb_message:

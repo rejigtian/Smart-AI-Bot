@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchRuns, startRun, deleteRun, Run } from '../lib/api'
+import { useT } from '../lib/i18n'
 
 const STATUS_COLOR: Record<string, string> = {
   pending:   'bg-yellow-50 text-yellow-600',
@@ -21,6 +22,7 @@ function statusBadge(s: string) {
 }
 
 function RunRow({ run }: { run: Run }) {
+  const t = useT()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const isActive = !TERMINAL.has(run.status)
@@ -74,8 +76,8 @@ function RunRow({ run }: { run: Run }) {
           <button
             className="px-2 py-0.5 text-xs border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-50"
             disabled={delMut.isPending}
-            onClick={(e) => { e.stopPropagation(); if (confirm('删除整次运行记录？该次运行的所有用例结果和派生记忆都会一并删除。')) delMut.mutate() }}
-            title="删除整次运行（含其用例结果 + 派生记忆）"
+            onClick={(e) => { e.stopPropagation(); if (confirm(t('删除整次运行记录？该次运行的所有用例结果和派生记忆都会一并删除。', 'Delete this entire run? All case results and derived memory from this run will also be deleted.'))) delMut.mutate() }}
+            title={t('删除整次运行（含其用例结果 + 派生记忆）', 'Delete entire run (including its case results + derived memory)')}
           >
             {delMut.isPending ? '…' : '🗑'}
           </button>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { api, fetchDevices } from '../lib/api'
+import { useT } from '../lib/i18n'
 
 interface Element {
   index: number
@@ -36,6 +37,7 @@ const BTN_RED  = `${BTN} border-red-400 text-red-600 hover:bg-red-50`
 
 export default function Recorder() {
   const navigate = useNavigate()
+  const t = useT()
 
   const { data: allDevices = [] } = useQuery({ queryKey: ['devices'], queryFn: fetchDevices, refetchInterval: 5000 })
   const onlineDevices = allDevices.filter(d => d.status === 'online')
@@ -147,22 +149,22 @@ export default function Recorder() {
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">录制测试用例</h1>
+      <h1 className="text-2xl font-bold mb-6">{t('录制测试用例', 'Record test case')}</h1>
 
       {/* Device selector (always visible) */}
       {!recording && (
         <div className="bg-white border rounded-lg p-4 shadow-sm mb-6 flex items-end gap-4 flex-wrap">
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-medium mb-1">选择设备</label>
+            <label className="block text-sm font-medium mb-1">{t('选择设备', 'Select device')}</label>
             {onlineDevices.length === 0 ? (
-              <p className="text-sm text-gray-400">暂无在线设备</p>
+              <p className="text-sm text-gray-400">{t('暂无在线设备', 'No online devices')}</p>
             ) : (
               <select
                 className="w-full border rounded px-3 py-1.5 text-sm"
                 value={deviceId}
                 onChange={e => setDeviceId(e.target.value)}
               >
-                <option value="">— 请选择 —</option>
+                <option value="">{t('— 请选择 —', '— Select —')}</option>
                 {onlineDevices.map(d => (
                   <option key={d.id} value={d.id}>{d.name} ({d.id.slice(0, 8)}…)</option>
                 ))}
@@ -174,10 +176,10 @@ export default function Recorder() {
             disabled={!deviceId || loading}
             onClick={startRecording}
           >
-            {loading ? '连接中…' : '▶ 开始录制'}
+            {loading ? t('连接中…', 'Connecting…') : t('▶ 开始录制', '▶ Start recording')}
           </button>
           <p className="w-full text-xs text-gray-400">
-            录制模式：选择设备后，在网页上操作即可控制手机并同步记录步骤，完成后保存为可重复运行的测试用例。
+            {t('录制模式：选择设备后，在网页上操作即可控制手机并同步记录步骤，完成后保存为可重复运行的测试用例。', 'Recording mode: after selecting a device, operate in the browser to control the phone and record steps in sync, then save as a repeatable test case.')}
           </p>
         </div>
       )}
@@ -195,15 +197,15 @@ export default function Recorder() {
           <div className="flex items-center gap-3 mb-4">
             <span className="text-sm font-medium">
               <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse mr-1.5" />
-              录制中 — {selectedDevice?.name ?? deviceId}
+              {t('录制中 — ', 'Recording — ')}{selectedDevice?.name ?? deviceId}
             </span>
             <button className={BTN_GRAY} disabled={loading} onClick={fetchSnapshot}>
-              {loading ? '…' : '⟳ 刷新截图'}
+              {loading ? '…' : t('⟳ 刷新截图', '⟳ Refresh screenshot')}
             </button>
             <button className={BTN_RED} onClick={stopRecording}>
-              ⏹ 停止录制
+              {t('⏹ 停止录制', '⏹ Stop recording')}
             </button>
-            <span className="ml-auto text-sm text-gray-400">{steps.length} 步已录制</span>
+            <span className="ml-auto text-sm text-gray-400">{steps.length} {t('步已录制', 'steps recorded')}</span>
           </div>
 
           {/* Main 2-column layout */}
@@ -218,7 +220,7 @@ export default function Recorder() {
                 />
               ) : (
                 <div className="h-64 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400 text-sm mb-3">
-                  截图加载中…
+                  {t('截图加载中…', 'Loading screenshot…')}
                 </div>
               )}
 
@@ -226,10 +228,10 @@ export default function Recorder() {
               <div className="bg-white border rounded-lg p-3 shadow-sm space-y-2">
                 {/* Scroll */}
                 <div>
-                  <div className="text-xs text-gray-400 mb-1.5 font-medium">滚动</div>
+                  <div className="text-xs text-gray-400 mb-1.5 font-medium">{t('滚动', 'Scroll')}</div>
                   <div className="flex gap-2 flex-wrap">
                     {(['down', 'up', 'left', 'right'] as const).map(dir => {
-                      const labels: Record<string, string> = { down: '↓ 向下', up: '↑ 向上', left: '← 向左', right: '→ 向右' }
+                      const labels: Record<string, string> = { down: t('↓ 向下', '↓ Down'), up: t('↑ 向上', '↑ Up'), left: t('← 向左', '← Left'), right: t('→ 向右', '→ Right') }
                       return (
                         <button key={dir} className={BTN_GRAY} disabled={loading}
                           onClick={() => doAction('scroll', { direction: dir, distance: 'medium' })}>
@@ -242,12 +244,12 @@ export default function Recorder() {
 
                 {/* System keys */}
                 <div>
-                  <div className="text-xs text-gray-400 mb-1.5 font-medium">系统操作</div>
+                  <div className="text-xs text-gray-400 mb-1.5 font-medium">{t('系统操作', 'System actions')}</div>
                   <div className="flex gap-2 flex-wrap">
                     {[
-                      { action: 'back', label: '↩ 返回' },
-                      { action: 'home', label: '⌂ 主页' },
-                      { action: 'recent', label: '⊞ 最近' },
+                      { action: 'back', label: t('↩ 返回', '↩ Back') },
+                      { action: 'home', label: t('⌂ 主页', '⌂ Home') },
+                      { action: 'recent', label: t('⊞ 最近', '⊞ Recent') },
                     ].map(({ action, label }) => (
                       <button key={action} className={BTN_GRAY} disabled={loading}
                         onClick={() => doAction('global_action', { action })}>
@@ -259,12 +261,12 @@ export default function Recorder() {
 
                 {/* Text input */}
                 <div>
-                  <div className="text-xs text-gray-400 mb-1.5 font-medium">输入文本</div>
+                  <div className="text-xs text-gray-400 mb-1.5 font-medium">{t('输入文本', 'Input text')}</div>
                   <div className="flex gap-2 items-center">
                     <input
                       type="text"
                       className="flex-1 border rounded px-2 py-1 text-sm"
-                      placeholder="输入内容后点击「输入」"
+                      placeholder={t('输入内容后点击「输入」', 'Type text then click "Input"')}
                       value={inputText}
                       onChange={e => setInputText(e.target.value)}
                       onKeyDown={e => {
@@ -276,7 +278,7 @@ export default function Recorder() {
                     />
                     <label className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer select-none">
                       <input type="checkbox" checked={inputClear} onChange={e => setInputClear(e.target.checked)} />
-                      清空
+                      {t('清空', 'Clear')}
                     </label>
                     <button
                       className={BTN_BLUE}
@@ -286,7 +288,7 @@ export default function Recorder() {
                         setInputText('')
                       }}
                     >
-                      输入
+                      {t('输入', 'Input')}
                     </button>
                   </div>
                 </div>
@@ -296,11 +298,11 @@ export default function Recorder() {
             {/* Right: element list */}
             <div>
               <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                UI 元素 ({elements.length})
+                {t('UI 元素', 'UI elements')} ({elements.length})
               </div>
               <div className="bg-white border rounded-lg shadow-sm overflow-y-auto" style={{ maxHeight: '70vh' }}>
                 {elements.length === 0 && (
-                  <p className="text-sm text-gray-400 px-4 py-6 text-center">暂无可交互元素</p>
+                  <p className="text-sm text-gray-400 px-4 py-6 text-center">{t('暂无可交互元素', 'No interactive elements')}</p>
                 )}
                 {elements.map((el, i) => (
                   <button
@@ -335,7 +337,7 @@ export default function Recorder() {
       {/* Recorded steps */}
       {steps.length > 0 && (
         <div className="bg-white border rounded-lg shadow-sm p-4 mb-5">
-          <div className="text-sm font-semibold mb-2">已录制步骤（{steps.length}）</div>
+          <div className="text-sm font-semibold mb-2">{t('已录制步骤', 'Recorded steps')}（{steps.length}）</div>
           <ol className="space-y-1">
             {steps.map((s, i) => (
               <li key={i} className="flex items-start gap-2 text-sm">
@@ -350,24 +352,24 @@ export default function Recorder() {
       {/* Save form (shown when stopped with steps, or while recording) */}
       {(steps.length > 0) && !saved && (
         <div className="bg-white border rounded-lg shadow-sm p-4 space-y-3">
-          <div className="text-sm font-semibold">保存为测试用例</div>
+          <div className="text-sm font-semibold">{t('保存为测试用例', 'Save as test case')}</div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">套件名称</label>
+              <label className="block text-xs text-gray-500 mb-1">{t('套件名称', 'Suite name')}</label>
               <input
                 type="text"
                 className="w-full border rounded px-3 py-1.5 text-sm"
-                placeholder="例：登录流程测试"
+                placeholder={t('例：登录流程测试', 'e.g. Login flow test')}
                 value={suiteName}
                 onChange={e => setSuiteName(e.target.value)}
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">期望结果</label>
+              <label className="block text-xs text-gray-500 mb-1">{t('期望结果', 'Expected result')}</label>
               <input
                 type="text"
                 className="w-full border rounded px-3 py-1.5 text-sm"
-                placeholder="例：成功进入主页并显示欢迎语"
+                placeholder={t('例：成功进入主页并显示欢迎语', 'e.g. Successfully reach the home page and show a welcome message')}
                 value={expected}
                 onChange={e => setExpected(e.target.value)}
               />
@@ -379,10 +381,10 @@ export default function Recorder() {
               disabled={!suiteName.trim() || !expected.trim() || steps.length === 0 || loading}
               onClick={saveRecording}
             >
-              {loading ? '保存中…' : '✓ 保存为测试用例'}
+              {loading ? t('保存中…', 'Saving…') : t('✓ 保存为测试用例', '✓ Save as test case')}
             </button>
             <button className={BTN_GRAY} onClick={resetRecording}>
-              重置
+              {t('重置', 'Reset')}
             </button>
           </div>
         </div>
@@ -391,15 +393,15 @@ export default function Recorder() {
       {/* Success state */}
       {saved && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-4">
-          <span className="text-ok font-medium">✓ 测试用例已保存</span>
+          <span className="text-ok font-medium">{t('✓ 测试用例已保存', '✓ Test case saved')}</span>
           <button
             className="text-sm text-primary hover:underline"
             onClick={() => navigate(`/suites/${saved.suiteId}`)}
           >
-            查看套件 →
+            {t('查看套件 →', 'View suite →')}
           </button>
           <button className={`${BTN_GRAY} ml-auto`} onClick={resetRecording}>
-            继续录制
+            {t('继续录制', 'Continue recording')}
           </button>
         </div>
       )}

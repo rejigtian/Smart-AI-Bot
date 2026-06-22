@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchNodes, StepNode, TestResult } from '../lib/api'
+import { useT } from '../lib/i18n'
 
 // Read-only step-tree with per-node run status. Shared prefix shown once;
 // click a node that has a result to inspect its replay on the right.
@@ -42,6 +43,7 @@ function ResultRow({
   node: TNode; depth: number; byNode: Map<string, TestResult>
   selectedId?: string; onSelect: (r: TestResult) => void; onStar: (id: string) => void
 }) {
+  const t = useT()
   const own = byNode.get(node.id)
   // Only nodes with their OWN result show a status badge. Intermediate nodes
   // show nothing, except a small ⚠ when a descendant failed (easy to locate).
@@ -56,9 +58,9 @@ function ResultRow({
       >
         <span className="text-ink-faint select-none text-xs">{node.children.length ? '▾' : '·'}</span>
         <div className="flex-1 min-w-0">
-          <span className="text-sm">{node.action || <span className="text-gray-400">（空步骤）</span>}</span>
+          <span className="text-sm">{node.action || <span className="text-gray-400">{t('（空步骤）', '(empty step)')}</span>}</span>
           {node.expected && (
-            <span className="ml-2 align-middle px-1.5 py-0.5 text-[10px] rounded bg-blue-100 text-blue-700">期望: {node.expected}</span>
+            <span className="ml-2 align-middle px-1.5 py-0.5 text-[10px] rounded bg-blue-100 text-blue-700">{t('期望', 'Expected')}: {node.expected}</span>
           )}
         </div>
         {own && (
@@ -67,11 +69,11 @@ function ResultRow({
           </span>
         )}
         {failedBelow && (
-          <span className="text-[11px] text-red-500 flex-shrink-0" title="此分支下有失败用例">⚠</span>
+          <span className="text-[11px] text-red-500 flex-shrink-0" title={t('此分支下有失败用例', 'This branch contains a failed case')}>⚠</span>
         )}
         {own && (
           <button
-            title={own.is_starred ? '取消参考标记' : '标记为参考案例'}
+            title={own.is_starred ? t('取消参考标记', 'Unmark reference') : t('标记为参考案例', 'Mark as reference case')}
             className={`flex-shrink-0 text-base leading-none ${own.is_starred ? 'text-yellow-400' : 'text-gray-300 hover:text-yellow-300'}`}
             onClick={e => { e.stopPropagation(); onStar(own.id) }}
           >
@@ -92,6 +94,7 @@ function FlatRow({
 }: {
   r: TestResult; selectedId?: string; onSelect: (r: TestResult) => void; onStar: (id: string) => void
 }) {
+  const t = useT()
   return (
     <div
       className={`flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer border-t ${selectedId === r.id ? 'bg-primary-soft' : ''}`}
@@ -105,7 +108,7 @@ function FlatRow({
         <div className="text-sm mt-1 break-words">{r.expected}</div>
       </div>
       <button
-        title={r.is_starred ? '取消参考标记' : '标记为参考案例'}
+        title={r.is_starred ? t('取消参考标记', 'Unmark reference') : t('标记为参考案例', 'Mark as reference case')}
         className={`ml-2 flex-shrink-0 text-base leading-none ${r.is_starred ? 'text-yellow-400' : 'text-gray-300 hover:text-yellow-300'}`}
         onClick={e => { e.stopPropagation(); onStar(r.id) }}
       >
@@ -121,6 +124,7 @@ export default function StepTreeResultView({
   suiteId: string; results: TestResult[]
   selectedId?: string; onSelect: (r: TestResult) => void; onStar: (id: string) => void
 }) {
+  const t = useT()
   const { data: nodes = [] } = useQuery({ queryKey: ['nodes', suiteId], queryFn: () => fetchNodes(suiteId) })
   const tree = useMemo(() => buildTree(nodes), [nodes])
   const byNode = useMemo(() => {
@@ -159,7 +163,7 @@ export default function StepTreeResultView({
       ))}
       {orphans.length > 0 && (
         <>
-          <div className="px-4 py-1.5 text-[11px] text-ink-faint bg-canvas-cool border-t">其他结果（不在当前步骤树中）</div>
+          <div className="px-4 py-1.5 text-[11px] text-ink-faint bg-canvas-cool border-t">{t('其他结果（不在当前步骤树中）', 'Other results (not in current step tree)')}</div>
           {orphans.map(r => (
             <FlatRow key={r.id} r={r} selectedId={selectedId} onSelect={onSelect} onStar={onStar} />
           ))}

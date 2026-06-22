@@ -1,4 +1,5 @@
 import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom'
+import { useT } from './lib/i18n'
 import Devices from './pages/Devices'
 import Suites from './pages/Suites'
 import SuiteDetail from './pages/SuiteDetail'
@@ -11,17 +12,18 @@ import RunCompare from './pages/RunCompare'
 import Library from './pages/Library'
 
 const NAV_LINKS = [
-  { to: '/', label: '设备', icon: '📱', end: true },
-  { to: '/quick', label: '快速任务', icon: '⚡', end: false },
-  { to: '/recorder', label: '录制', icon: '⏺', end: false },
-  { to: '/suites', label: '测试套件', icon: '🧪', end: false },
-  { to: '/library', label: '用例库', icon: '📚', end: false },
-  { to: '/runs', label: '运行记录', icon: '▶', end: true },
-  { to: '/runs/compare', label: '对比', icon: '⇄', end: false },
-  { to: '/settings', label: '设置', icon: '⚙', end: false },
+  { to: '/', label: { zh: '设备', en: 'Device' }, icon: '📱', end: true },
+  { to: '/quick', label: { zh: '快速任务', en: 'Quick Task' }, icon: '⚡', end: false },
+  { to: '/recorder', label: { zh: '录制', en: 'Record' }, icon: '⏺', end: false },
+  { to: '/suites', label: { zh: '测试套件', en: 'Suites' }, icon: '🧪', end: false },
+  { to: '/library', label: { zh: '用例库', en: 'Library' }, icon: '📚', end: false },
+  { to: '/runs', label: { zh: '运行记录', en: 'Run history' }, icon: '▶', end: true },
+  { to: '/runs/compare', label: { zh: '对比', en: 'Compare' }, icon: '⇄', end: false },
+  { to: '/settings', label: { zh: '设置', en: 'Settings' }, icon: '⚙', end: false },
 ]
 
 export default function App() {
+  const t = useT()
   return (
     <BrowserRouter>
       <div className="min-h-screen flex bg-canvas-soft text-ink">
@@ -46,7 +48,7 @@ export default function App() {
                 }
               >
                 <span className="w-4 text-center text-xs">{icon}</span>
-                {label}
+                {t(label.zh, label.en)}
               </NavLink>
             ))}
           </nav>

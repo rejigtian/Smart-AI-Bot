@@ -5,6 +5,7 @@ import { fetchRun, fetchResults, fetchSteps, cancelRun, runTree, starResult, fet
 import StepTreeResultView from '../components/StepTreeResultView'
 import LivePanel from '../components/LivePanel'
 import ScreenshotReplay from '../components/ScreenshotReplay'
+import { useT } from '../lib/i18n'
 
 const STATUS_COLOR: Record<string, string> = {
   pass: 'bg-green-100 text-ok',
@@ -19,6 +20,7 @@ const STATUS_COLOR: Record<string, string> = {
 const TERMINAL = new Set(['done', 'error', 'cancelled'])
 
 export default function RunDetail() {
+  const t = useT()
   const { runId } = useParams<{ runId: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -94,7 +96,7 @@ export default function RunDetail() {
     },
     onError: (e: unknown) => {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || String(e)
-      alert(`重新运行失败: ${msg}`)
+      alert(`${t('重新运行失败', 'Re-run failed')}: ${msg}`)
     },
   })
 
@@ -168,7 +170,7 @@ export default function RunDetail() {
                   rel="noreferrer"
                   className="ml-2 px-3 py-1 border border-primary text-primary-deep text-xs rounded hover:bg-primary-soft"
                 >
-                  ↓ 下载报告
+                  ↓ {t('下载报告', 'Download report')}
                 </a>
               </>
             )}
@@ -213,7 +215,7 @@ export default function RunDetail() {
                 <div className="flex items-center gap-2">
                   {statusBadge(selected.status)}
                   <button
-                    title={selected.is_starred ? '取消参考标记' : '标记为参考案例'}
+                    title={selected.is_starred ? t('取消参考标记', 'Unmark reference') : t('标记为参考案例', 'Mark as reference case')}
                     className={`text-base leading-none transition-colors ${
                       selected.is_starred ? 'text-yellow-400' : 'text-gray-300 hover:text-yellow-300'
                     }`}
@@ -222,7 +224,7 @@ export default function RunDetail() {
                     ★
                   </button>
                   {selected.is_starred && (
-                    <span className="text-xs text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">参考案例</span>
+                    <span className="text-xs text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">{t('参考案例', 'Reference case')}</span>
                   )}
                   <span className="text-xs text-gray-500 ml-auto">{selected.steps} steps</span>
                 </div>

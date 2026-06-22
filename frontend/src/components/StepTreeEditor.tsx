@@ -5,6 +5,7 @@ import {
   searchNodes, copyNode, NodeSearchHit,
   fetchNodeResults, deleteNodeResult, purgeNodeResults, CaseResult,
 } from '../lib/api'
+import { useT } from '../lib/i18n'
 
 const STATUS_STYLE: Record<string, string> = {
   pass: 'bg-green-100 text-green-700',
@@ -14,6 +15,7 @@ const STATUS_STYLE: Record<string, string> = {
 }
 
 function NodeHistory({ nodeId, indentPx }: { nodeId: string; indentPx: number }) {
+  const t = useT()
   const qc = useQueryClient()
   const { data: results = [], isLoading } = useQuery({
     queryKey: ['node-results', nodeId],
@@ -28,38 +30,38 @@ function NodeHistory({ nodeId, indentPx }: { nodeId: string; indentPx: number })
     <div className="bg-canvas-cool border-t text-xs" style={{ paddingLeft: indentPx, paddingRight: 16 }}>
       <div className="flex items-center justify-between py-2 pr-1">
         <span className="text-ink-faint">
-          {isLoading ? '加载中…' : `${results.length} 条运行记录`}
-          {results.length > 0 && <span className="ml-1">· 加 ★ 或最近一次通过会作为下次运行的参考</span>}
+          {isLoading ? t('加载中…', 'Loading…') : t(`${results.length} 条运行记录`, `${results.length} run record(s)`)}
+          {results.length > 0 && <span className="ml-1">{t('· 加 ★ 或最近一次通过会作为下次运行的参考', '· Starred or the latest passing run is used as reference for the next run')}</span>}
         </span>
         {results.length > 0 && (
           <span className="flex gap-1.5 flex-shrink-0">
             <button className="px-2 py-0.5 border border-orange-200 text-orange-600 rounded hover:bg-orange-50 disabled:opacity-40"
                     disabled={failedCount === 0 || purge.isPending}
-                    onClick={() => { if (confirm(`删除这个节点的 ${failedCount} 条失败记录？`)) purge.mutate('failed') }}>
-              删失败 {failedCount > 0 ? `(${failedCount})` : ''}
+                    onClick={() => { if (confirm(t(`删除这个节点的 ${failedCount} 条失败记录？`, `Delete ${failedCount} failed record(s) of this node?`))) purge.mutate('failed') }}>
+              {t('删失败', 'Delete failed')} {failedCount > 0 ? `(${failedCount})` : ''}
             </button>
             <button className="px-2 py-0.5 border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-40"
                     disabled={purge.isPending}
-                    onClick={() => { if (confirm('清空这个节点的全部运行记录？相关记忆也会一并删除。')) purge.mutate('all') }}>
-              清空
+                    onClick={() => { if (confirm(t('清空这个节点的全部运行记录？相关记忆也会一并删除。', 'Clear all run records of this node? Related memory will also be deleted.'))) purge.mutate('all') }}>
+              {t('清空', 'Clear')}
             </button>
           </span>
         )}
       </div>
-      {!isLoading && results.length === 0 && <div className="pb-2 text-ink-faint">还没有运行记录。</div>}
+      {!isLoading && results.length === 0 && <div className="pb-2 text-ink-faint">{t('还没有运行记录。', 'No run records yet.')}</div>}
       {results.map((r: CaseResult) => (
         <div key={r.id} className="flex items-center gap-2 py-1.5 border-t border-hairline">
           <span className={`px-1.5 py-0.5 rounded font-medium ${STATUS_STYLE[r.status] || 'bg-gray-100 text-gray-500'}`}>{r.status}</span>
-          {r.is_starred && <span title="已加星：作为下次运行参考">★</span>}
+          {r.is_starred && <span title={t('已加星：作为下次运行参考', 'Starred: used as reference for the next run')}>★</span>}
           <span className="text-ink-mute whitespace-nowrap">
             {new Date(r.created_at).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </span>
           <span className="text-ink-faint truncate flex-1 font-mono">{r.model || r.provider}</span>
-          <span className="text-ink-faint whitespace-nowrap">{r.steps} 步 · {r.total_tokens} tok</span>
+          <span className="text-ink-faint whitespace-nowrap">{r.steps} {t('步', 'steps')} · {r.total_tokens} tok</span>
           <button className="px-1.5 py-0.5 border border-red-200 text-red-600 rounded hover:bg-red-50 flex-shrink-0 disabled:opacity-40"
                   disabled={delOne.isPending}
-                  onClick={() => { if (confirm('删除这条运行记录？')) delOne.mutate(r.id) }}
-                  title="删除这条记录（及由它产生的记忆）">
+                  onClick={() => { if (confirm(t('删除这条运行记录？', 'Delete this run record?'))) delOne.mutate(r.id) }}
+                  title={t('删除这条记录（及由它产生的记忆）', 'Delete this record (and the memory it produced)')}>
             🗑
           </button>
         </div>
@@ -100,6 +102,7 @@ function NodeRow({
   usage?: Record<string, { links: number; copies: number }>
   onShowUsage?: (nodeId: string) => void
 }) {
+  const t = useT()
   const u = usage?.[node.id]
   const reuseCount = u ? u.links + u.copies : 0
   const qc = useQueryClient()
@@ -128,36 +131,36 @@ function NodeRow({
     onSuccess: invalidate,
     onError: (e: unknown) => {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || String(e)
-      alert(`移动失败: ${msg}`)
+      alert(t(`移动失败: ${msg}`, `Move failed: ${msg}`))
     },
   })
 
   if (editing) {
     return (
       <div className="px-4 py-3 bg-primary-soft border-t" style={{ paddingLeft: 16 + indent }}>
-        <div className="text-xs text-gray-500 mb-1">行为 / Action</div>
+        <div className="text-xs text-gray-500 mb-1">{t('行为 / Action', 'Action')}</div>
         <input className="w-full border rounded px-2 py-1 text-sm mb-2 font-mono"
                value={action} onChange={e => setAction(e.target.value)} />
-        <div className="text-xs text-gray-500 mb-1">期望 / Expected（留空 = 执行成功即通过）</div>
+        <div className="text-xs text-gray-500 mb-1">{t('期望 / Expected（留空 = 执行成功即通过）', 'Expected (leave empty = pass on successful execution)')}</div>
         <input className="w-full border rounded px-2 py-1 text-sm mb-2"
                value={expected} onChange={e => setExpected(e.target.value)} />
         <label className="flex items-center gap-2 mb-2 text-xs text-gray-600 cursor-pointer">
           <input type="checkbox" checked={loopTask} onChange={e => setLoopTask(e.target.checked)} />
-          循环任务（重复同一动作的任务，跳过卡死兜底）
+          {t('循环任务（重复同一动作的任务，跳过卡死兜底）', 'Loop task (repeats the same action; skips the stuck-detection fallback)')}
         </label>
         <label className="flex items-center gap-2 mb-3 text-xs text-gray-600 cursor-pointer">
           <input type="checkbox" checked={!reversible} onChange={e => setReversible(!e.target.checked)} />
-          不可回退（提交后 back 撤不掉，分支切换时从头重放而非按返回）
+          {t('不可回退（提交后 back 撤不掉，分支切换时从头重放而非按返回）', 'Irreversible (back cannot undo after submit; replays from start on branch switch instead of going back)')}
         </label>
         <div className="flex gap-2">
           <button className="px-3 py-1 bg-primary text-white text-xs rounded hover:bg-primary-deep disabled:opacity-50"
                   disabled={saveMut.isPending || action.trim() === ''}
                   onClick={() => saveMut.mutate()}>
-            {saveMut.isPending ? '保存中…' : '保存'}
+            {saveMut.isPending ? t('保存中…', 'Saving…') : t('保存', 'Save')}
           </button>
           <button className="px-3 py-1 border text-xs rounded hover:bg-gray-100"
                   onClick={() => { setAction(node.action); setExpected(node.expected); setLoopTask(node.loop_task); setReversible(node.reversible); setEditing(false) }}>
-            取消
+            {t('取消', 'Cancel')}
           </button>
         </div>
       </div>
@@ -178,13 +181,13 @@ function NodeRow({
           e.preventDefault(); setDropHover(false)
           if (dragId && dragId !== node.id) moveMut.mutate(dragId)
         }}
-        title="拖动到另一个节点上 = 改挂到它下面"
+        title={t('拖动到另一个节点上 = 改挂到它下面', 'Drag onto another node = re-parent under it')}
       >
         {node.children.length > 0 ? (
           <button
             className="text-ink-faint mt-0.5 w-3 flex-shrink-0 select-none hover:text-ink"
             onClick={e => { e.stopPropagation(); onToggleCollapse(node.id) }}
-            title={collapsed.has(node.id) ? '展开' : '收起'}
+            title={collapsed.has(node.id) ? t('展开', 'Expand') : t('收起', 'Collapse')}
           >
             {collapsed.has(node.id) ? '▸' : '▾'}
           </button>
@@ -195,26 +198,26 @@ function NodeRow({
         <div className="flex-1 min-w-0">
           {node.ref_id ? (
             <div className="text-sm font-medium text-blue-700">
-              🔗 链接：<span className="font-mono text-xs">{node.ref_path || '（源已失效）'}</span>
-              <span className="ml-2 text-[10px] text-gray-400">改源处即同步</span>
+              🔗 {t('链接：', 'Link: ')}<span className="font-mono text-xs">{node.ref_path || t('（源已失效）', '(source no longer exists)')}</span>
+              <span className="ml-2 text-[10px] text-gray-400">{t('改源处即同步', 'Edits at the source sync here')}</span>
             </div>
           ) : (
             <div className="text-sm font-medium">
-              {node.action || <span className="text-gray-400">（空步骤）</span>}
+              {node.action || <span className="text-gray-400">{t('（空步骤）', '(empty step)')}</span>}
               {node.expected
-                ? <span className="ml-2 align-middle px-1.5 py-0.5 text-[10px] rounded bg-blue-100 text-blue-700">期望: {node.expected}</span>
-                : <span className="ml-2 align-middle text-[10px] text-gray-400">执行成功即通过</span>}
-              {node.loop_task && <span className="ml-2 align-middle px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700">循环</span>}
-              {!node.reversible && <span className="ml-2 align-middle text-[10px]" title="不可回退">🔒</span>}
+                ? <span className="ml-2 align-middle px-1.5 py-0.5 text-[10px] rounded bg-blue-100 text-blue-700">{t('期望: ', 'Expected: ')}{node.expected}</span>
+                : <span className="ml-2 align-middle text-[10px] text-gray-400">{t('执行成功即通过', 'Pass on successful execution')}</span>}
+              {node.loop_task && <span className="ml-2 align-middle px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700">{t('循环', 'Loop')}</span>}
+              {!node.reversible && <span className="ml-2 align-middle text-[10px]" title={t('不可回退', 'Irreversible')}>🔒</span>}
             </div>
           )}
           {reuseCount > 0 && (
             <button
               className="mt-0.5 text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 hover:bg-purple-200"
               onClick={e => { e.stopPropagation(); onShowUsage?.(node.id) }}
-              title="被其他用例复用（链接/拷贝）的次数 — 点击查看在哪用"
+              title={t('被其他用例复用（链接/拷贝）的次数 — 点击查看在哪用', 'Times reused (link/copy) by other cases — click to see where')}
             >
-              🔁 被复用 {reuseCount}{u && u.links ? `（${u.links} 链接）` : ''}
+              🔁 {t('被复用', 'Reused')} {reuseCount}{u && u.links ? t(`（${u.links} 链接）`, ` (${u.links} link(s))`) : ''}
             </button>
           )}
         </div>
@@ -222,23 +225,23 @@ function NodeRow({
           {onRunNode && (
             <button className="px-2 py-0.5 text-xs border border-primary text-primary rounded hover:bg-primary-soft"
                     onClick={() => onRunNode(node.id)}
-                    title="运行到这个节点（执行 root→该节点的整条链）">
-              ▶ 运行
+                    title={t('运行到这个节点（执行 root→该节点的整条链）', 'Run to this node (executes the whole chain root→this node)')}>
+              ▶ {t('运行', 'Run')}
             </button>
           )}
-          <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setAdding(true)}>+ 步骤</button>
-          {!node.ref_id && <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setReusing(true)}>复用</button>}
+          <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setAdding(true)}>+ {t('步骤', 'Step')}</button>
+          {!node.ref_id && <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setReusing(true)}>{t('复用', 'Reuse')}</button>}
           {!node.ref_id && (
             <button className={`px-2 py-0.5 text-xs border rounded hover:bg-gray-100 ${showHistory ? 'bg-gray-100' : ''}`}
-                    onClick={() => setShowHistory(v => !v)} title="查看 / 清理这个节点的历史运行记录（影响下次运行的记忆）">
-              记录{showHistory ? ' ▾' : ' ▸'}
+                    onClick={() => setShowHistory(v => !v)} title={t('查看 / 清理这个节点的历史运行记录（影响下次运行的记忆）', 'View / clean this node\'s run history (affects the next run\'s memory)')}>
+              {t('记录', 'History')}{showHistory ? ' ▾' : ' ▸'}
             </button>
           )}
-          {!node.ref_id && <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setEditing(true)}>编辑</button>}
+          {!node.ref_id && <button className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100" onClick={() => setEditing(true)}>{t('编辑', 'Edit')}</button>}
           <button className="px-2 py-0.5 text-xs border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-50"
                   disabled={delMut.isPending}
-                  onClick={() => { if (confirm('删除这个节点？子节点会上提到它的父节点。')) delMut.mutate() }}>
-            删除
+                  onClick={() => { if (confirm(t('删除这个节点？子节点会上提到它的父节点。', 'Delete this node? Child nodes will be lifted up to its parent.'))) delMut.mutate() }}>
+            {t('删除', 'Delete')}
           </button>
         </div>
       </div>
@@ -266,6 +269,7 @@ function NodeRow({
 function ReusePicker({ suiteId, parentId, indentPx, onDone }: {
   suiteId: string; parentId: string | null; indentPx: number; onDone: () => void
 }) {
+  const t = useT()
   const qc = useQueryClient()
   const [q, setQ] = useState('')
   const [mode, setMode] = useState<'copy' | 'link'>('copy')
@@ -281,33 +285,33 @@ function ReusePicker({ suiteId, parentId, indentPx, onDone }: {
   return (
     <div className="py-3 border-t bg-blue-50" style={{ paddingLeft: indentPx, paddingRight: 16 }}>
       <div className="flex items-center gap-2 mb-1">
-        <span className="text-xs text-gray-500">搜索用例库复用一段流程</span>
+        <span className="text-xs text-gray-500">{t('搜索用例库复用一段流程', 'Search the case library to reuse a flow')}</span>
         <div className="inline-flex rounded border text-[11px] overflow-hidden">
           {(['copy', 'link'] as const).map(m => (
             <button key={m} type="button"
                     className={`px-2 py-0.5 ${mode === m ? 'bg-primary text-white' : 'bg-white text-ink-mute hover:bg-gray-50'}`}
                     onClick={() => setMode(m)}>
-              {m === 'copy' ? '快照拷贝' : '活链接'}
+              {m === 'copy' ? t('快照拷贝', 'Snapshot copy') : t('活链接', 'Live link')}
             </button>
           ))}
         </div>
-        <span className="text-[10px] text-gray-400">{mode === 'copy' ? '拷一份，之后独立' : '存源引用，改源即同步'}</span>
+        <span className="text-[10px] text-gray-400">{mode === 'copy' ? t('拷一份，之后独立', 'Makes a copy, independent afterwards') : t('存源引用，改源即同步', 'Stores a reference; edits at the source sync here')}</span>
       </div>
       <input autoFocus className="w-full border rounded px-2 py-1 text-sm mb-2"
-             placeholder="搜索行为或期望，如「登录」「语音」" value={q} onChange={e => setQ(e.target.value)} />
+             placeholder={t('搜索行为或期望，如「登录」「语音」', 'Search action or expected, e.g. "login", "voice"')} value={q} onChange={e => setQ(e.target.value)} />
       <div className="max-h-48 overflow-auto">
         {hits.map(h => (
           <button key={h.node_id} disabled={copyMut.isPending}
                   className="w-full text-left px-2 py-1 text-xs hover:bg-white rounded disabled:opacity-50"
                   onClick={() => copyMut.mutate(h.node_id)}>
             <span className="font-mono">{h.path}</span>
-            {h.expected && <span className="text-blue-600"> · 期望:{h.expected}</span>}
+            {h.expected && <span className="text-blue-600"> · {t('期望:', 'Expected:')}{h.expected}</span>}
             <span className="text-gray-400"> · {h.suite_name}</span>
           </button>
         ))}
-        {q.trim() && hits.length === 0 && <div className="text-xs text-gray-400 px-2 py-1">没有匹配</div>}
+        {q.trim() && hits.length === 0 && <div className="text-xs text-gray-400 px-2 py-1">{t('没有匹配', 'No matches')}</div>}
       </div>
-      <button className="mt-2 px-3 py-1 border text-xs rounded hover:bg-gray-100" onClick={onDone}>取消</button>
+      <button className="mt-2 px-3 py-1 border text-xs rounded hover:bg-gray-100" onClick={onDone}>{t('取消', 'Cancel')}</button>
     </div>
   )
 }
@@ -319,6 +323,7 @@ function AddNodeForm({
 }: {
   suiteId: string; parentId: string | null; indentPx: number; onDone: () => void
 }) {
+  const t = useT()
   const qc = useQueryClient()
   const [action, setAction] = useState('')
   const [expected, setExpected] = useState('')
@@ -328,20 +333,20 @@ function AddNodeForm({
   })
   return (
     <div className="py-3 bg-green-50 border-t" style={{ paddingLeft: indentPx, paddingRight: 16 }}>
-      <div className="text-xs text-gray-500 mb-1">行为 / Action</div>
+      <div className="text-xs text-gray-500 mb-1">{t('行为 / Action', 'Action')}</div>
       <input autoFocus className="w-full border rounded px-2 py-1 text-sm mb-2 font-mono"
-             placeholder="这一步做什么" value={action} onChange={e => setAction(e.target.value)} />
-      <div className="text-xs text-gray-500 mb-1">期望 / Expected（可选）</div>
+             placeholder={t('这一步做什么', 'What does this step do')} value={action} onChange={e => setAction(e.target.value)} />
+      <div className="text-xs text-gray-500 mb-1">{t('期望 / Expected（可选）', 'Expected (optional)')}</div>
       <input className="w-full border rounded px-2 py-1 text-sm mb-2"
-             placeholder="留空 = 执行成功即通过" value={expected}
+             placeholder={t('留空 = 执行成功即通过', 'Leave empty = pass on successful execution')} value={expected}
              onChange={e => setExpected(e.target.value)}
              onKeyDown={e => { if (e.key === 'Enter' && action.trim()) addMut.mutate() }} />
       <div className="flex gap-2">
         <button className="px-3 py-1 bg-ok text-white text-xs rounded hover:bg-ok disabled:opacity-50"
                 disabled={!action.trim() || addMut.isPending} onClick={() => addMut.mutate()}>
-          {addMut.isPending ? '添加中…' : '添加'}
+          {addMut.isPending ? t('添加中…', 'Adding…') : t('添加', 'Add')}
         </button>
-        <button className="px-3 py-1 border text-xs rounded hover:bg-gray-100" onClick={onDone}>取消</button>
+        <button className="px-3 py-1 border text-xs rounded hover:bg-gray-100" onClick={onDone}>{t('取消', 'Cancel')}</button>
       </div>
     </div>
   )
@@ -355,6 +360,7 @@ export default function StepTreeEditor({ suiteId, onRunNode, usage, onShowUsage 
   usage?: Record<string, { links: number; copies: number }>
   onShowUsage?: (nodeId: string) => void
 }) {
+  const t = useT()
   const { data: nodes = [], isLoading } = useQuery({
     queryKey: ['nodes', suiteId],
     queryFn: () => fetchNodes(suiteId),
@@ -377,7 +383,7 @@ export default function StepTreeEditor({ suiteId, onRunNode, usage, onShowUsage 
   const parentIds = useMemo(() => new Set(nodes.filter(n => n.parent_id).map(n => n.parent_id as string)), [nodes])
   const allCollapsed = parentIds.size > 0 && [...parentIds].every(id => collapsed.has(id))
 
-  if (isLoading) return <div className="p-4 text-sm text-gray-400">加载步骤树…</div>
+  if (isLoading) return <div className="p-4 text-sm text-gray-400">{t('加载步骤树…', 'Loading step tree…')}</div>
 
   return (
     <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
@@ -385,12 +391,12 @@ export default function StepTreeEditor({ suiteId, onRunNode, usage, onShowUsage 
         <div className="flex justify-end px-3 py-1.5 border-b bg-canvas-cool">
           <button className="text-xs text-primary hover:text-primary-deep"
                   onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(parentIds))}>
-            {allCollapsed ? '全部展开' : '全部收起'}
+            {allCollapsed ? t('全部展开', 'Expand all') : t('全部收起', 'Collapse all')}
           </button>
         </div>
       )}
       {tree.length === 0 && !addingRoot && (
-        <div className="px-4 py-6 text-sm text-gray-400 text-center">还没有步骤。点下面「+ 根步骤」开始。</div>
+        <div className="px-4 py-6 text-sm text-gray-400 text-center">{t('还没有步骤。点下面「+ 根步骤」开始。', 'No steps yet. Click "+ Root step" below to start.')}</div>
       )}
       {tree.map(n => (
         <NodeRow key={n.id} node={n} depth={0} suiteId={suiteId} dragId={dragId} setDragId={setDragId}
@@ -405,9 +411,9 @@ export default function StepTreeEditor({ suiteId, onRunNode, usage, onShowUsage 
         : (
           <div className="flex border-t">
             <button className="flex-1 text-left px-4 py-2.5 text-sm text-primary hover:bg-primary-soft"
-                    onClick={() => setAddingRoot(true)}>+ 根步骤</button>
+                    onClick={() => setAddingRoot(true)}>+ {t('根步骤', 'Root step')}</button>
             <button className="px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 border-l"
-                    onClick={() => setReusingRoot(true)}>从用例库复用</button>
+                    onClick={() => setReusingRoot(true)}>{t('从用例库复用', 'Reuse from case library')}</button>
           </div>
         )}
     </div>

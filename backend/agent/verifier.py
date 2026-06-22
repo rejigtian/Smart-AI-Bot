@@ -85,12 +85,14 @@ class LLMVerifier:
         api_key: str = "",
         api_base: str = "",
         fallbacks: Optional[list] = None,
+        language: str = "",
     ) -> None:
         self.provider = provider
         self.model = model
         self.api_key = api_key
         self.api_base = api_base
         self.fallbacks: list = fallbacks or []
+        self.language: str = language
         self._primary = ModelTarget(provider, model, api_key, api_base)
 
     async def verify(
@@ -173,6 +175,7 @@ class LLMVerifier:
                 "treat it as direct observational evidence, not speculation."
             )
 
+        from core.i18n import lang_directive
         verify_messages = [
             {
                 "role": "system",
@@ -183,6 +186,7 @@ class LLMVerifier:
                     "is sufficient. For dynamic changes (a value increased, an item was added), "
                     "the agent's observation of what changed — combined with the screenshot "
                     "showing the resulting state — is sufficient evidence."
+                    + lang_directive(self.language)
                 ),
             },
             {

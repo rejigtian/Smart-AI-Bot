@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchDeviceCapabilities, Device } from '../lib/api'
+import { useT } from '../lib/i18n'
 import H264Canvas from './H264Canvas'
 import H264Player from './H264Player'
 
@@ -12,10 +13,10 @@ const CAN_WEBCODECS =
 
 type Mode = 'auto' | 'screenshot' | 'off'
 
-const MODES: { key: Mode; label: string }[] = [
-  { key: 'auto', label: '自动' },
-  { key: 'screenshot', label: '截图' },
-  { key: 'off', label: '关' },
+const MODES: { key: Mode; label: string; labelEn: string }[] = [
+  { key: 'auto', label: '自动', labelEn: 'Auto' },
+  { key: 'screenshot', label: '截图', labelEn: 'Screenshot' },
+  { key: 'off', label: '关', labelEn: 'Off' },
 ]
 
 // H.264 screenrecord stream over WebSocket (under /v1 — already ws-proxied).
@@ -52,6 +53,7 @@ function ScreenshotView({ deviceId, source }: { deviceId: string; source: 'scree
 }
 
 export default function LivePanel({ device }: { device: Device | null }) {
+  const t = useT()
   const [mode, setMode] = useState<Mode>(
     () => (localStorage.getItem('live-mode') as Mode) || 'off',
   )
@@ -82,7 +84,7 @@ export default function LivePanel({ device }: { device: Device | null }) {
   return (
     <div className="bg-white border rounded-lg p-3 lg:sticky lg:top-6">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold">实时画面</span>
+        <span className="text-sm font-semibold">{t('实时画面', 'Live screen')}</span>
         <div className="flex rounded-md border overflow-hidden text-xs">
           {MODES.map(m => (
             <button
@@ -94,7 +96,7 @@ export default function LivePanel({ device }: { device: Device | null }) {
                   : 'bg-white text-ink-mute hover:bg-gray-50'
               }`}
             >
-              {m.label}
+              {t(m.label, m.labelEn)}
             </button>
           ))}
         </div>
@@ -106,11 +108,11 @@ export default function LivePanel({ device }: { device: Device | null }) {
         style={{ aspectRatio: '9 / 19.5', maxWidth: 300 }}
       >
         {!device ? (
-          <Placeholder text="选择左侧一台设备" />
+          <Placeholder text={t('选择左侧一台设备', 'Select a device on the left')} />
         ) : mode === 'off' ? (
-          <Placeholder text="已关闭 — 选「自动」或「截图」开启" />
+          <Placeholder text={t('已关闭 — 选「自动」或「截图」开启', 'Off — choose "Auto" or "Screenshot" to start')} />
         ) : !canStream ? (
-          <Placeholder text="设备离线，无法取流" />
+          <Placeholder text={t('设备离线，无法取流', 'Device offline, cannot stream')} />
         ) : usingAdb ? (
           CAN_WEBCODECS ? (
             <H264Canvas
@@ -138,10 +140,10 @@ export default function LivePanel({ device }: { device: Device | null }) {
       <div className="mt-2 text-center text-xs text-gray-400 font-mono">
         {device && mode !== 'off' && canStream
           ? usingAdb
-            ? 'ADB · 实时录屏 H.264'
-            : '截图 · ~1 fps'
+            ? t('ADB · 实时录屏 H.264', 'ADB · live recording H.264')
+            : t('截图 · ~1 fps', 'Screenshot · ~1 fps')
           : caps && !caps.adb_available && mode === 'auto'
-            ? '无 ADB，自动回落截图'
+            ? t('无 ADB，自动回落截图', 'No ADB, falling back to screenshots')
             : ' '}
       </div>
     </div>

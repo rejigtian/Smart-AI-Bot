@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Any, List, Optional
 
 from agent.llm import ModelTarget, resilient_completion
+from core.i18n import lang_directive as _lang
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,7 @@ async def generate_plan(
     api_base: str = "",
     fallbacks: Optional[list] = None,
     kb_context: str = "",
+    language: str = "",
 ) -> Optional[str]:
     """Generate a text execution plan (Phase 1 — injected as pinned message).
 
@@ -127,7 +129,7 @@ async def generate_plan(
             primary=ModelTarget(provider, model, api_key, api_base),
             base_kwargs={
                 "messages": [
-                    {"role": "system", "content": PLANNER_PROMPT},
+                    {"role": "system", "content": PLANNER_PROMPT + _lang(language)},
                     {"role": "user", "content": task_description},
                 ],
                 "temperature": 0.3,
@@ -163,6 +165,7 @@ async def generate_subgoals(
     api_key: str = "",
     api_base: str = "",
     fallbacks: Optional[list] = None,
+    language: str = "",
 ) -> Optional[List[SubGoal]]:
     """Decompose a complex task into SubGoal objects for subagent execution.
 
@@ -179,7 +182,7 @@ async def generate_subgoals(
             primary=ModelTarget(provider, model, api_key, api_base),
             base_kwargs={
                 "messages": [
-                    {"role": "system", "content": SUBGOAL_PROMPT},
+                    {"role": "system", "content": SUBGOAL_PROMPT + _lang(language)},
                     {"role": "user", "content": task_description},
                 ],
                 "temperature": 0.3,

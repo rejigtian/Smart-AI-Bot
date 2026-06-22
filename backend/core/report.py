@@ -21,6 +21,7 @@ from types import SimpleNamespace
 
 from sqlalchemy import select
 
+from core.i18n import current_language, report_labels
 from core.step_tree import NodeRow, chain_to_node
 from db.database import AsyncSessionLocal
 from db.models import StepNode, TestCase, TestResult, TestRun, TestStepLog, TestSuite
@@ -223,31 +224,32 @@ async def generate_html_report(run_id: str) -> str:
         </tr>"""
 
     # ── Summary cards ────────────────────────────────────────────────────────
+    L = report_labels(current_language())
     stat_cards = f"""
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px;">
       <div style="background:#d1fae5;border-radius:8px;padding:12px 20px;text-align:center;">
         <div style="font-size:24px;font-weight:700;color:#065f46;">{passed}</div>
-        <div style="font-size:12px;color:#065f46;">Pass</div>
+        <div style="font-size:12px;color:#065f46;">{L['pass']}</div>
       </div>
       <div style="background:#fee2e2;border-radius:8px;padding:12px 20px;text-align:center;">
         <div style="font-size:24px;font-weight:700;color:#991b1b;">{failed}</div>
-        <div style="font-size:12px;color:#991b1b;">Fail</div>
+        <div style="font-size:12px;color:#991b1b;">{L['fail']}</div>
       </div>
       <div style="background:#ffedd5;border-radius:8px;padding:12px 20px;text-align:center;">
         <div style="font-size:24px;font-weight:700;color:#9a3412;">{errored}</div>
-        <div style="font-size:12px;color:#9a3412;">Error</div>
+        <div style="font-size:12px;color:#9a3412;">{L['error']}</div>
       </div>
       <div style="background:#f3f4f6;border-radius:8px;padding:12px 20px;text-align:center;">
         <div style="font-size:24px;font-weight:700;color:#6b7280;">{skipped}</div>
-        <div style="font-size:12px;color:#6b7280;">Skip</div>
+        <div style="font-size:12px;color:#6b7280;">{L['skip']}</div>
       </div>
       <div style="background:#dbeafe;border-radius:8px;padding:12px 20px;text-align:center;">
         <div style="font-size:24px;font-weight:700;color:#1e40af;">{total}</div>
-        <div style="font-size:12px;color:#1e40af;">Total</div>
+        <div style="font-size:12px;color:#1e40af;">{L['total']}</div>
       </div>
       <div style="background:#ede9fe;border-radius:8px;padding:12px 20px;text-align:center;">
         <div style="font-size:24px;font-weight:700;color:#5b21b6;">{pass_rate}</div>
-        <div style="font-size:12px;color:#5b21b6;">Pass Rate</div>
+        <div style="font-size:12px;color:#5b21b6;">{L['pass_rate']}</div>
       </div>
       <div style="background:#fdf4ff;border-radius:8px;padding:12px 20px;text-align:center;">
         <div style="font-size:24px;font-weight:700;color:#86198f;">{tokens_display}</div>
@@ -265,7 +267,7 @@ async def generate_html_report(run_id: str) -> str:
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Test Report — {escape(suite_name)}</title>
+<title>{L['report_title']} — {escape(suite_name)}</title>
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -393,10 +395,10 @@ async def generate_html_report(run_id: str) -> str:
 <div style="max-width:1400px;margin:0 auto;">
   <div style="margin-bottom:20px;">
     <h1 style="font-size:22px;font-weight:700;margin-bottom:6px;">
-      Test Report — {escape(suite_name)}
+      {L['report_title']} — {escape(suite_name)}
     </h1>
     <div style="font-size:13px;color:#6b7280;display:flex;gap:24px;flex-wrap:wrap;">
-      <span>Run ID: <code style="font-size:11px;">{escape(run_id)}</code></span>
+      <span>{L['run_id']}: <code style="font-size:11px;">{escape(run_id)}</code></span>
       <span>Device: <strong>{escape(run.device_id)}</strong></span>
       <span>Model: <strong>{escape(run.provider)}/{escape(run.model)}</strong></span>
       <span>Started: <strong>{_fmt_dt(run.created_at)}</strong></span>

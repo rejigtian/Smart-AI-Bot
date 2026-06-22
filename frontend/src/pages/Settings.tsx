@@ -4,6 +4,7 @@ import {
   fetchSettings, saveSettings, Settings as SettingsData,
   fetchProjects, createProject, updateProject, deleteProject, Project,
 } from '../lib/api'
+import { useT } from '../lib/i18n'
 
 const PROVIDER_MODELS: Record<string, string[]> = {
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
@@ -45,6 +46,7 @@ function isConfigured(form: Partial<SettingsData>, provider: string): boolean {
 }
 
 function ProjectCard({ project, onDelete }: { project: Project; onDelete: () => void }) {
+  const t = useT()
   const qc = useQueryClient()
   const [form, setForm] = useState<Project>(project)
   const saveMut = useMutation({
@@ -64,24 +66,24 @@ function ProjectCard({ project, onDelete }: { project: Project; onDelete: () => 
   )
   return (
     <div className="border rounded-lg p-4 bg-white space-y-2">
-      {field('名称 / Name', 'name', '项目名')}
-      {field('应用包名 / app_package（匹配键）', 'app_package', 'com.example.app')}
-      {field('知识检索命令 / kb_search_cmd（项目 skill 提供的检索 CLI；优先，留空则用下方关键词兜底）', 'kb_search_cmd', '如 `<cmd> "<query>" -n N`')}
-      {field('知识库路径 / kb_path（绝对路径，支持 ~/；用于读全文 + 无检索命令时的关键词兜底）', 'kb_path', '/Users/you/repo/knowledge 或 ~/repo/knowledge')}
-      {field('源码路径 / source_root（卡点时 agent 可搜/读源码）', 'source_root', '~/repo/android-src')}
+      {field(t('名称 / Name', 'Name'), 'name', t('项目名', 'Project name'))}
+      {field(t('应用包名 / app_package（匹配键）', 'App package / app_package (match key)'), 'app_package', 'com.example.app')}
+      {field(t('知识检索命令 / kb_search_cmd（项目 skill 提供的检索 CLI；优先，留空则用下方关键词兜底）', 'KB search command / kb_search_cmd (search CLI provided by project skill; preferred, leave empty to fall back to keyword search below)'), 'kb_search_cmd', '如 `<cmd> "<query>" -n N`')}
+      {field(t('知识库路径 / kb_path（绝对路径，支持 ~/；用于读全文 + 无检索命令时的关键词兜底）', 'KB path / kb_path (absolute path, ~/ supported; used to read full text + keyword fallback when no search command)'), 'kb_path', '/Users/you/repo/knowledge 或 ~/repo/knowledge')}
+      {field(t('源码路径 / source_root（卡点时 agent 可搜/读源码）', 'Source root / source_root (agent can search/read source when stuck)'), 'source_root', '~/repo/android-src')}
       <div className="flex gap-2 pt-1">
         <button
           className="px-3 py-1 bg-primary text-white text-xs rounded hover:bg-primary-deep disabled:opacity-50"
           disabled={saveMut.isPending}
           onClick={() => saveMut.mutate()}
         >
-          {saveMut.isPending ? '保存中…' : '保存'}
+          {saveMut.isPending ? t('保存中…', 'Saving…') : t('保存', 'Save')}
         </button>
         <button
           className="px-3 py-1 border border-red-200 text-red-600 text-xs rounded hover:bg-red-50"
-          onClick={() => { if (confirm('删除这个项目档案？')) onDelete() }}
+          onClick={() => { if (confirm(t('删除这个项目档案？', 'Delete this project profile?'))) onDelete() }}
         >
-          删除
+          {t('删除', 'Delete')}
         </button>
       </div>
     </div>
@@ -89,6 +91,7 @@ function ProjectCard({ project, onDelete }: { project: Project; onDelete: () => 
 }
 
 function ProjectProfiles() {
+  const t = useT()
   const qc = useQueryClient()
   const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: fetchProjects })
   const createMut = useMutation({
@@ -102,19 +105,21 @@ function ProjectProfiles() {
   return (
     <div className="mt-8">
       <div className="flex items-center justify-between mb-1">
-        <h2 className="text-lg font-semibold">项目档案（可选）</h2>
+        <h2 className="text-lg font-semibold">{t('项目档案（可选）', 'Project Profiles (optional)')}</h2>
         <button
           className="text-sm text-primary hover:text-primary-deep"
           onClick={() => createMut.mutate()}
         >
-          + 添加项目
+          {t('+ 添加项目', '+ Add project')}
         </button>
       </div>
       <p className="text-xs text-gray-400 mb-3">
-        为某个 App 导入它自带的知识库 / skill / 源码路径，帮助 AI 更好地测试；不配置也照常运行。
-        与本地测试知识库相互独立。按「应用包名」匹配——在套件页给套件设置同样的包名即可生效。
+        {t(
+          '为某个 App 导入它自带的知识库 / skill / 源码路径，帮助 AI 更好地测试；不配置也照常运行。与本地测试知识库相互独立。按「应用包名」匹配——在套件页给套件设置同样的包名即可生效。',
+          'Import an app\'s own knowledge base / skill / source path to help the AI test it better; runs fine without it. Independent from the local test knowledge base. Matched by "App package" — set the same package on a suite in the suite page to take effect.'
+        )}
       </p>
-      {projects.length === 0 && <p className="text-sm text-gray-400">还没有项目档案。</p>}
+      {projects.length === 0 && <p className="text-sm text-gray-400">{t('还没有项目档案。', 'No project profiles yet.')}</p>}
       <div className="space-y-3">
         {projects.map(p => <ProjectCard key={p.id} project={p} onDelete={() => delMut.mutate(p.id)} />)}
       </div>
@@ -123,6 +128,8 @@ function ProjectProfiles() {
 }
 
 export default function Settings() {
+  const t = useT()
+  const qc = useQueryClient()
   const { data: remote, isLoading } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings })
   const [form, setForm] = useState<Partial<SettingsData>>({})
   const [saved, setSaved] = useState(false)
@@ -133,7 +140,10 @@ export default function Settings() {
 
   const saveMut = useMutation({
     mutationFn: () => saveSettings(form as SettingsData),
-    onSuccess: () => { setSaved(true); setTimeout(() => setSaved(false), 2000) },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['settings'] }) // refresh useT so a language change re-renders the UI
+      setSaved(true); setTimeout(() => setSaved(false), 2000)
+    },
   })
 
   if (isLoading) return <p className="text-gray-500">Loading…</p>
@@ -175,9 +185,23 @@ export default function Settings() {
 
       <div className="bg-white border rounded-lg p-6 shadow-sm space-y-5">
 
+        {/* ── Main language (AI output + report follow it) ── */}
+        <div>
+          <label className="block text-sm font-medium mb-1">{t('语言 / Language', 'Language')}</label>
+          <select
+            className="w-full border rounded px-3 py-1.5 text-sm"
+            value={form.language || 'zh'}
+            onChange={e => set('language', e.target.value)}
+          >
+            <option value="zh">简体中文</option>
+            <option value="en">English</option>
+          </select>
+          <p className="text-xs text-gray-400 mt-1">{t('AI 的思考 / 理由 / 校验结论 / 计划 与测试报告都用这个语言。', "The AI's thinking / reasoning / verification conclusions / plans and the test report all use this language.")}</p>
+        </div>
+
         {/* ── Agent Model + selected provider's credentials ── */}
         <div className="space-y-3">
-          <h3 className="text-sm font-medium">Agent 模型</h3>
+          <h3 className="text-sm font-medium">{t('Agent 模型', 'Agent Model')}</h3>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-gray-500 mb-1">Provider</label>
@@ -204,13 +228,13 @@ export default function Settings() {
             </div>
           </div>
           <p className="text-xs text-gray-400">
-            可直接输入自定义 model 名，如 us.anthropic.claude-sonnet-4-6
+            {t('可直接输入自定义 model 名，如 us.anthropic.claude-sonnet-4-6', 'You can enter a custom model name directly, e.g. us.anthropic.claude-sonnet-4-6')}
           </p>
 
           {/* credentials for the currently-selected provider, inline */}
           {(PROVIDER_FIELDS[provider] || []).length > 0 && (
             <div className="bg-gray-50 border rounded p-3 space-y-3">
-              <p className="text-xs font-medium text-gray-600">{provider} 凭证</p>
+              <p className="text-xs font-medium text-gray-600">{provider} {t('凭证', 'credentials')}</p>
               {(PROVIDER_FIELDS[provider] || []).map(f => <Field key={f.key as string} f={f} />)}
             </div>
           )}
@@ -218,7 +242,7 @@ export default function Settings() {
 
         {/* ── Other providers (for fallback / switching) ── */}
         <Collapsible
-          title={<>其它 Provider 凭证 <span className="text-xs font-normal text-gray-400">（用于切换 / fallback）</span></>}
+          title={<>{t('其它 Provider 凭证', 'Other provider credentials')} <span className="text-xs font-normal text-gray-400">{t('（用于切换 / fallback）', '(for switching / fallback)')}</span></>}
           open={showOthers}
           onToggle={() => setShowOthers(v => !v)}
         >
@@ -227,8 +251,8 @@ export default function Settings() {
               <p className="text-xs font-medium text-gray-600 flex items-center gap-2">
                 {p}
                 {isConfigured(form, p)
-                  ? <span className="text-ok">✓ 已配置</span>
-                  : <span className="text-gray-400">○ 未配置</span>}
+                  ? <span className="text-ok">{t('✓ 已配置', '✓ Configured')}</span>
+                  : <span className="text-gray-400">{t('○ 未配置', '○ Not configured')}</span>}
               </p>
               {(PROVIDER_FIELDS[p] || []).map(f => <Field key={f.key as string} f={f} />)}
             </div>
@@ -237,14 +261,14 @@ export default function Settings() {
 
         {/* ── Advanced: Verifier + Webhook ── */}
         <Collapsible
-          title={<>高级：Verifier / Webhook</>}
+          title={<>{t('高级：Verifier / Webhook', 'Advanced: Verifier / Webhook')}</>}
           open={showAdvanced}
           onToggle={() => setShowAdvanced(v => !v)}
         >
           <div>
             <p className="text-sm font-medium mb-1">Verification Model <span className="text-xs font-normal text-gray-400">(optional)</span></p>
             <p className="text-xs text-gray-400 mb-2">
-              用于 pass/fail 判断的专用模型。留空则与 Agent 使用同一模型。
+              {t('用于 pass/fail 判断的专用模型。留空则与 Agent 使用同一模型。', 'A dedicated model for pass/fail judgement. Leave empty to use the same model as the Agent.')}
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -254,7 +278,7 @@ export default function Settings() {
                   value={form.verifier_provider || ''}
                   onChange={e => set('verifier_provider', e.target.value)}
                 >
-                  <option value="">— 与 Agent 相同 —</option>
+                  <option value="">{t('— 与 Agent 相同 —', '— Same as Agent —')}</option>
                   {PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
@@ -263,7 +287,7 @@ export default function Settings() {
                 <input
                   type="text"
                   className="w-full border rounded px-3 py-1.5 text-sm font-mono"
-                  placeholder="留空 = 同 Agent"
+                  placeholder={t('留空 = 同 Agent', 'Empty = same as Agent')}
                   value={form.verifier_model || ''}
                   onChange={e => set('verifier_model', e.target.value)}
                 />
@@ -273,7 +297,7 @@ export default function Settings() {
 
           <div className="pt-1">
             <p className="text-sm font-medium mb-1">Webhook Notification <span className="text-xs font-normal text-gray-400">(optional)</span></p>
-            <p className="text-xs text-gray-400 mb-2">Run 完成后推送结果到飞书/钉钉/Slack。</p>
+            <p className="text-xs text-gray-400 mb-2">{t('Run 完成后推送结果到飞书/钉钉/Slack。', 'Push results to Feishu/DingTalk/Slack after a run completes.')}</p>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Type</label>
@@ -308,7 +332,7 @@ export default function Settings() {
           disabled={saveMut.isPending}
           onClick={() => saveMut.mutate()}
         >
-          {saved ? '✓ Saved' : saveMut.isPending ? 'Saving…' : 'Save Settings'}
+          {saved ? t('✓ 已保存', '✓ Saved') : saveMut.isPending ? t('保存中…', 'Saving…') : t('保存设置', 'Save Settings')}
         </button>
       </div>
 

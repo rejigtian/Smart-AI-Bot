@@ -90,6 +90,7 @@ export interface Settings {
   verifier_model: string
   webhook_url: string
   webhook_type: string
+  language: string
 }
 
 // ── Devices ──────────────────────────────────────────────────────────────────

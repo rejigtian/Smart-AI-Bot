@@ -5,6 +5,7 @@ import {
   fetchDevices, createDevice, deleteDevice, renameDevice, fetchAppInfo, fetchServerInfo, Device,
 } from '../lib/api'
 import LivePanel from '../components/LivePanel'
+import { useT } from '../lib/i18n'
 
 // The phone-reachable host:port for the pairing QR. A phone can't reach the
 // server via localhost, so on localhost we swap in the backend-reported LAN IP.
@@ -44,6 +45,7 @@ function buildConnectUri(device: Device, lanIp?: string, backendPort?: number): 
 
 export default function Devices() {
   const qc = useQueryClient()
+  const t = useT()
   const [newName, setNewName] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [qrDevice, setQrDevice] = useState<Device | null>(null)
@@ -128,7 +130,7 @@ export default function Devices() {
             className="border border-primary text-primary px-4 py-1.5 rounded text-sm hover:bg-primary-soft"
             onClick={() => setShowDownload(true)}
           >
-            📱 安装 App
+            📱 {t('安装 App', 'Install App')}
           </button>
           <input
             className="border rounded px-3 py-1.5 text-sm w-48"
@@ -195,7 +197,7 @@ export default function Devices() {
                           <span className="font-medium">{d.name}</span>
                           <button
                             className="text-xs text-gray-400 hover:text-primary"
-                            title="重命名"
+                            title={t('重命名', 'Rename')}
                             onClick={e => { e.stopPropagation(); setEditingId(d.id); setEditName(d.name) }}
                           >
                             ✎
@@ -247,7 +249,7 @@ export default function Devices() {
             </div>
 
             <div className="mt-6 p-4 bg-primary-soft rounded-lg text-sm text-primary-deep">
-              <strong>Portal setup:</strong> In the Portal app, tap <strong>扫码连接 (Scan QR)</strong> and point it at a
+              <strong>Portal setup:</strong> In the Portal app, tap <strong>{t('扫码连接', 'Scan QR')}</strong> and point it at a
               device's QR code — or set the server URL to{' '}
               <code className="bg-primary-soft px-1 rounded">{wsJoinUrl(lanIp, backendPort)}</code>{' '}
               and paste the token manually. Use this LAN address from a phone on the same
@@ -256,22 +258,21 @@ export default function Devices() {
 
             <details className="mt-3 px-4 py-3 border rounded-lg text-sm text-gray-600">
               <summary className="cursor-pointer font-medium text-primary-deep select-none">
-                连不上 / 扫码无法访问？点此排查
+                {t('连不上 / 扫码无法访问？点此排查', "Can't connect / QR unreachable? Troubleshoot here")}
               </summary>
               <ol className="list-decimal ml-5 mt-3 space-y-2">
                 <li>
-                  <strong>用的是局域网地址吗？</strong> 本页应通过{' '}
-                  <code className="bg-gray-100 px-1 rounded">192.168.*</code> 这类内网 IP 打开（地址栏直接换成该 IP），
-                  且手机和电脑在<strong>同一个路由器 / WiFi</strong> 下。当前发给设备的地址是{' '}
+                  <strong>{t('用的是局域网地址吗？', 'Using a LAN address?')}</strong> {t('本页应通过', 'Open this page via a private IP like')}{' '}
+                  <code className="bg-gray-100 px-1 rounded">192.168.*</code> {t('这类内网 IP 打开（地址栏直接换成该 IP），且手机和电脑在', '(replace the address bar with that IP), and the phone and computer must be on the')}<strong>{t('同一个路由器 / WiFi', 'same router / WiFi')}</strong> {t('下。当前发给设备的地址是', '. The address currently sent to the device is')}{' '}
                   <code className="bg-gray-100 px-1 rounded break-all">{reachableHost(lanIp, backendPort)}</code>。
                 </li>
                 <li>
-                  <strong>VPN / 虚拟网卡会让自动探测选错 IP。</strong> 装了公司 VPN、Radmin、Docker 等时，可能给出{' '}
+                  <strong>{t('VPN / 虚拟网卡会让自动探测选错 IP。', 'VPN / virtual adapters can make auto-detection pick the wrong IP.')}</strong> {t('装了公司 VPN、Radmin、Docker 等时，可能给出', 'With a company VPN, Radmin, Docker, etc. it may return')}{' '}
                   <code className="bg-gray-100 px-1 rounded">10.*</code> / <code className="bg-gray-100 px-1 rounded">26.*</code>{' '}
-                  这类手机访问不到的地址 —— 改用真实内网 IP 打开本页，或临时断开 VPN。
+                  {t('这类手机访问不到的地址 —— 改用真实内网 IP 打开本页，或临时断开 VPN。', 'addresses the phone cannot reach — open this page using the real LAN IP, or disconnect the VPN temporarily.')}
                 </li>
                 <li>
-                  <strong>防火墙挡了吗？</strong> 用手机浏览器打开{' '}
+                  <strong>{t('防火墙挡了吗？', 'Firewall blocking?')}</strong> {t('用手机浏览器打开', 'Open this in the phone browser')}{' '}
                   <a
                     className="text-primary underline break-all"
                     href={`${httpBase(lanIp, backendPort)}/api/app/latest`}
@@ -280,13 +281,13 @@ export default function Devices() {
                   >
                     {`${httpBase(lanIp, backendPort)}/api/app/latest`}
                   </a>{' '}
-                  —— 能看到 JSON 说明网络通；打不开多半是端口入站被防火墙拦了，需放行前端 / 后端端口。
+                  {t('—— 能看到 JSON 说明网络通；打不开多半是端口入站被防火墙拦了，需放行前端 / 后端端口。', '— seeing JSON means the network works; if it fails, inbound ports are likely blocked by the firewall, so allow the frontend / backend ports.')}
                 </li>
                 <li>
-                  <strong>安装与权限：</strong> 装 APK 时允许「未知来源」，装好后在系统设置里给它开启<strong>无障碍服务</strong>。
+                  <strong>{t('安装与权限：', 'Install & permissions:')}</strong> {t('装 APK 时允许「未知来源」，装好后在系统设置里给它开启', 'Allow "unknown sources" when installing the APK, then enable')}<strong>{t('无障碍服务', 'Accessibility service')}</strong>{t('。', ' for it in system settings.')}
                 </li>
                 <li>
-                  <strong>设备在外网？</strong> 跨网络时需配置域名 + <code className="bg-gray-100 px-1 rounded">wss://</code>，详见部署文档。
+                  <strong>{t('设备在外网？', 'Device on a remote network?')}</strong> {t('跨网络时需配置域名 +', 'Across networks you need a domain +')} <code className="bg-gray-100 px-1 rounded">wss://</code>{t('，详见部署文档。', '; see the deployment docs.')}
                 </li>
               </ol>
             </details>
@@ -308,11 +309,11 @@ export default function Devices() {
             className="bg-white rounded-lg p-6 max-w-sm w-full text-center"
             onClick={e => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold mb-1">扫码安装 App</h2>
+            <h2 className="text-lg font-bold mb-1">{t('扫码安装 App', 'Scan to install App')}</h2>
             <p className="text-sm text-gray-500 mb-4">
               {appInfo?.available
                 ? `Portal App ${appInfo.version ?? ''}`
-                : '暂无可下载的安装包'}
+                : t('暂无可下载的安装包', 'No installable package available yet')}
             </p>
             {appInfo?.available ? (
               <>
@@ -320,7 +321,7 @@ export default function Devices() {
                   <QRCodeSVG value={downloadUrl} size={240} includeMargin />
                 </div>
                 <p className="text-xs text-gray-400 mb-1">
-                  用手机浏览器扫码下载 APK，安装时允许「未知来源」
+                  {t('用手机浏览器扫码下载 APK，安装时允许「未知来源」', 'Scan with the phone browser to download the APK; allow "unknown sources" when installing')}
                 </p>
                 <a
                   href={downloadUrl}
@@ -331,8 +332,8 @@ export default function Devices() {
               </>
             ) : (
               <p className="text-xs text-gray-400 mb-4">
-                请先在 <code className="bg-gray-100 px-1 rounded">android/</code> 目录执行{' '}
-                <code className="bg-gray-100 px-1 rounded">./gradlew assembleDebug</code> 生成并归档安装包。
+                {t('请先在', 'First run')} <code className="bg-gray-100 px-1 rounded">android/</code> {t('目录执行', 'in the')}{' '}
+                <code className="bg-gray-100 px-1 rounded">./gradlew assembleDebug</code> {t('生成并归档安装包。', 'directory to build and archive the package.')}
               </p>
             )}
             <button
@@ -360,7 +361,7 @@ export default function Devices() {
               <QRCodeSVG value={buildConnectUri(qrDevice, lanIp, backendPort).uri} size={240} includeMargin />
             </div>
             <p className="text-xs text-gray-400 mb-1">
-              In the Portal app tap <strong>扫码连接 (Scan QR)</strong>
+              In the Portal app tap <strong>{t('扫码连接', 'Scan QR')}</strong>
             </p>
             <p className="text-xs text-gray-400 font-mono break-all mb-4">
               {buildConnectUri(qrDevice, lanIp, backendPort).wsUrl}

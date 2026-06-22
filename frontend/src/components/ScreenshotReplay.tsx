@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { StepLog } from '../lib/api'
+import { useT } from '../lib/i18n'
 
 interface Frame { b64: string; label: string; fn: string }
 
@@ -9,6 +10,7 @@ interface Frame { b64: string; label: string; fn: string }
 export default function ScreenshotReplay({
   steps, finalShot, hasSelection, videoUrl,
 }: { steps: StepLog[]; finalShot?: string; hasSelection: boolean; videoUrl?: string }) {
+  const t = useT()
   const [tab, setTab] = useState<'video' | 'shots'>(videoUrl ? 'video' : 'shots')
   // Fall back to screenshots if there's no recording.
   const showVideo = tab === 'video' && !!videoUrl
@@ -43,16 +45,16 @@ export default function ScreenshotReplay({
   return (
     <div className="bg-white border rounded-lg p-3">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold">录屏回放</span>
+        <span className="text-sm font-semibold">{t('录屏回放', 'Recording replay')}</span>
         {videoUrl ? (
           <div className="flex rounded-md border overflow-hidden text-xs">
-            {(['video', 'shots'] as const).map(t => (
+            {(['video', 'shots'] as const).map(tabKey => (
               <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`px-2.5 py-1 ${tab === t ? 'bg-primary text-white' : 'bg-white text-ink-mute hover:bg-gray-50'}`}
+                key={tabKey}
+                onClick={() => setTab(tabKey)}
+                className={`px-2.5 py-1 ${tab === tabKey ? 'bg-primary text-white' : 'bg-white text-ink-mute hover:bg-gray-50'}`}
               >
-                {t === 'video' ? '视频' : '截图'}
+                {tabKey === 'video' ? t('视频', 'Video') : t('截图', 'Screenshot')}
               </button>
             ))}
           </div>
@@ -76,9 +78,9 @@ export default function ScreenshotReplay({
             className="absolute inset-0 w-full h-full object-contain bg-black"
           />
         ) : !hasSelection ? (
-          <Center text="选择左侧一个用例查看回放" />
+          <Center text={t('选择左侧一个用例查看回放', 'Select a case on the left to view its replay')} />
         ) : frames.length === 0 ? (
-          <Center text="该用例无截图帧" />
+          <Center text={t('该用例无截图帧', 'This case has no screenshot frames')} />
         ) : (
           <img
             src={`data:image/png;base64,${cur.b64}`}
@@ -96,7 +98,7 @@ export default function ScreenshotReplay({
               className="flex-1 px-3 py-1.5 bg-primary text-white rounded text-sm hover:bg-primary-deep"
               onClick={() => { if (idx >= frames.length - 1) setIdx(0); setPlaying(p => !p) }}
             >
-              {playing ? '⏸ 暂停' : '▶ 播放'}
+              {playing ? t('⏸ 暂停', '⏸ Pause') : t('▶ 播放', '▶ Play')}
             </button>
             <button className={btn} disabled={idx >= frames.length - 1} onClick={() => { setPlaying(false); setIdx(i => Math.min(frames.length - 1, i + 1)) }}>›</button>
           </div>
