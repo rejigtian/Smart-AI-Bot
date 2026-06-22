@@ -17,10 +17,13 @@ from datetime import datetime
 from html import escape
 from typing import Optional
 
+from types import SimpleNamespace
+
 from sqlalchemy import select
 
+from core.step_tree import NodeRow, chain_to_node
 from db.database import AsyncSessionLocal
-from db.models import TestCase, TestResult, TestRun, TestStepLog, TestSuite
+from db.models import StepNode, TestCase, TestResult, TestRun, TestStepLog, TestSuite
 
 
 # ── Status badge colors (inline styles — no external CSS) ────────────────────
@@ -70,13 +73,54 @@ async def generate_html_report(run_id: str) -> str:
         suite = await db.get(TestSuite, run.suite_id)
         suite_name = suite.name if suite else run.suite_id
 
-        res = await db.execute(
-            select(TestResult, TestCase)
-            .join(TestCase, TestResult.case_id == TestCase.id)
-            .where(TestResult.run_id == run_id)
-            .order_by(TestCase.order)
+        results = (await db.execute(
+            select(TestResult).where(TestResult.run_id == run_id)
+        )).scalars().all()
+
+        # A result's case_id resolves against test_cases (legacy runs) OR
+        # step_nodes (tree runs). The old inner join on TestCase produced an
+        # empty report for tree runs, whose results reference StepNode ids.
+        ids = [r.case_id for r in results]
+        cases = {c.id: c for c in (await db.execute(
+            select(TestCase).where(TestCase.id.in_(ids))
+        )).scalars().all()}
+        node_ids = [cid for cid in ids if cid not in cases]
+        node_info: dict[str, tuple[str, str]] = {}  # id -> (path, expected)
+        node_order: dict[str, int] = {}
+        if node_ids:
+            node_rows = (await db.execute(
+                select(StepNode).where(StepNode.id.in_(node_ids))
+            )).scalars().all()
+            target_nodes = {n.id: n for n in node_rows}
+            suite_ids = {n.suite_id for n in node_rows}
+            suite_nodes = (await db.execute(
+                select(StepNode).where(StepNode.suite_id.in_(suite_ids))
+            )).scalars().all()
+            by_suite: dict = {}
+            for n in suite_nodes:
+                by_suite.setdefault(n.suite_id, []).append(
+                    NodeRow(id=n.id, parent_id=n.parent_id, action=n.action,
+                            expected=n.expected or "", order=n.order)
+                )
+            for nid, n in target_nodes.items():
+                chain = chain_to_node(by_suite.get(n.suite_id, []), nid)
+                node_info[nid] = (" > ".join(ci.action for ci in chain), n.expected or "")
+                node_order[nid] = n.order
+
+        def _resolve(cid: str):
+            if cid in cases:
+                c = cases[cid]
+                return SimpleNamespace(path=c.path, expected=c.expected), c.order
+            if cid in node_info:
+                path, expected = node_info[cid]
+                return SimpleNamespace(path=path, expected=expected), node_order.get(cid, 0)
+            return SimpleNamespace(path="", expected=""), 0
+
+        ordered = sorted(
+            ((_resolve(r.case_id), r) for r in results),
+            key=lambda t: t[0][1],
         )
-        rows = res.all()
+        rows = [(r, c) for (c, _order), r in ordered]
 
         # Fetch step logs keyed by result_id
         step_logs_map: dict[str, list] = {}
