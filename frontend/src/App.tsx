@@ -10,6 +10,7 @@ import QuickRun from './pages/QuickRun'
 import Recorder from './pages/Recorder'
 import RunCompare from './pages/RunCompare'
 import Library from './pages/Library'
+import Knowledge from './pages/Knowledge'
 
 const NAV_LINKS = [
   { to: '/', label: { zh: '设备', en: 'Device' }, icon: '📱', end: true },
@@ -17,6 +18,7 @@ const NAV_LINKS = [
   { to: '/recorder', label: { zh: '录制', en: 'Record' }, icon: '⏺', end: false },
   { to: '/suites', label: { zh: '测试套件', en: 'Suites' }, icon: '🧪', end: false },
   { to: '/library', label: { zh: '用例库', en: 'Library' }, icon: '📚', end: false },
+  { to: '/knowledge', label: { zh: '知识库', en: 'Knowledge' }, icon: '🧠', end: false },
   { to: '/runs', label: { zh: '运行记录', en: 'Run history' }, icon: '▶', end: true },
   { to: '/runs/compare', label: { zh: '对比', en: 'Compare' }, icon: '⇄', end: false },
   { to: '/settings', label: { zh: '设置', en: 'Settings' }, icon: '⚙', end: false },
@@ -64,6 +66,7 @@ export default function App() {
               <Route path="/suites" element={<Suites />} />
               <Route path="/suites/:suiteId" element={<SuiteDetail />} />
               <Route path="/library" element={<Library />} />
+              <Route path="/knowledge" element={<Knowledge />} />
               <Route path="/runs" element={<Runs />} />
               <Route path="/runs/compare" element={<RunCompare />} />
               <Route path="/runs/:runId" element={<RunDetail />} />

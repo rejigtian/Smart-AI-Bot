@@ -364,3 +364,26 @@ export const deleteProject = (id: string) => api.delete(`/projects/${id}`)
 
 export const setSuiteAppPackage = (suiteId: string, app_package: string) =>
   api.patch<Suite>(`/suites/${suiteId}`, { app_package }).then(r => r.data)
+
+// ── Self knowledge base (dictated notes, LLM-organized) ──────────────────────
+
+export interface KnowledgeNote {
+  id: string
+  title: string
+  body: string
+  keywords: string[]
+  aliases: string[]
+  raw_input: string
+  created_at: string
+  updated_at: string
+}
+
+export const fetchKnowledge = (q?: string) =>
+  api.get<KnowledgeNote[]>('/knowledge', { params: q ? { q } : {} }).then(r => r.data)
+export const addKnowledge = (text: string) =>
+  api.post<KnowledgeNote>('/knowledge', { text }).then(r => r.data)
+export const updateKnowledge = (
+  id: string,
+  data: Partial<Pick<KnowledgeNote, 'title' | 'body' | 'keywords' | 'aliases'>>,
+) => api.put<KnowledgeNote>(`/knowledge/${id}`, data).then(r => r.data)
+export const deleteKnowledge = (id: string) => api.delete(`/knowledge/${id}`)
