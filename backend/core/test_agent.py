@@ -317,12 +317,14 @@ class TestCaseAgent:
         source_root: str = "",  # app source root for search_source/read_source tools
         kb_search_cmd: str = "",  # project KB search CLI from the profile (project-specific)
         language: str = "",  # AI output language; defaults to the global setting
+        target_package: str = "",  # the app under test — tell the agent which app to launch
     ):
         self.device = device
         self.provider = provider
         self.project_kb_roots: list = project_kb_roots or []
         self.source_root: str = source_root or ""
         self.kb_search_cmd: str = kb_search_cmd or ""
+        self.target_package: str = target_package or ""
         self.language: str = language or current_language()
         # Conditionally expose extra tools based on the matched Project Profile.
         self._tools = list(TOOLS)
@@ -595,6 +597,16 @@ class TestCaseAgent:
             {"role": "system", "content": SYSTEM_PROMPT + lang_directive(self.language)},
             {"role": "user", "content": goal},
         ]
+        # The app under test is known (from the suite's app_package / Project
+        # Profile) — tell the agent explicitly so it launches the RIGHT app
+        # instead of guessing from the installed-package list.
+        if self.target_package:
+            init_messages.append({"role": "user", "content": (
+                f"[Target app] The app under test is package `{self.target_package}`. "
+                f"Unless it is already in the foreground, your FIRST action must be "
+                f"start_app(\"{self.target_package}\"). Do NOT guess the app from the "
+                f"installed-packages list — this package is authoritative."
+            )})
         if kb_message:
             init_messages.append({"role": "user", "content": kb_message})
         if ref_message:

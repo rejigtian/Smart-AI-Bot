@@ -187,6 +187,7 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
         project_kb_roots = await _project_kb_roots(suite_id)
         project_source_root = await _project_source_root(suite_id)
         project_kb_search_cmd = await _project_kb_search_cmd(suite_id)
+        project_app_package = await _suite_app_package(suite_id)
 
         ordered = [cid for cid in case_ids if cid in case_map]
         safe = [cid for cid in ordered if not _is_destructive(f"{case_map[cid].path} {case_map[cid].expected}")]
@@ -269,6 +270,7 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
                 lessons_learned=lessons or None,
                 project_kb_roots=project_kb_roots, source_root=project_source_root,
                 kb_search_cmd=project_kb_search_cmd,
+                target_package=project_app_package,
             )
             try:
                 case_result = await agent.run(case_data)
@@ -410,6 +412,7 @@ async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20,
         project_kb_roots = await _project_kb_roots(suite_id)
         project_source_root = await _project_source_root(suite_id)
         project_kb_search_cmd = await _project_kb_search_cmd(suite_id)
+        project_app_package = await _suite_app_package(suite_id)
 
         conn = connected_devices.get(device_id)
         if conn is None or not conn.is_connected:
@@ -501,6 +504,7 @@ async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20,
                 allow_subagents=False,
                 project_kb_roots=project_kb_roots, source_root=project_source_root,
                 kb_search_cmd=project_kb_search_cmd,
+                target_package=project_app_package,
             )
             try:
                 case_result = await agent.run(case_data)
@@ -640,6 +644,7 @@ async def execute_run(
         project_kb_roots = await _project_kb_roots(run_row.suite_id)
         project_source_root = await _project_source_root(run_row.suite_id)
         project_kb_search_cmd = await _project_kb_search_cmd(run_row.suite_id)
+        project_app_package = await _suite_app_package(run_row.suite_id)
 
         # Mark run as running
         async with AsyncSessionLocal() as session:
@@ -773,6 +778,7 @@ async def execute_run(
                 fallbacks=fallbacks,
                 project_kb_roots=project_kb_roots, source_root=project_source_root,
                 kb_search_cmd=project_kb_search_cmd,
+                target_package=project_app_package,
             )
 
             case_result: Optional[CaseResult] = None
@@ -812,6 +818,7 @@ async def execute_run(
                         fallbacks=fallbacks,
                         project_kb_roots=project_kb_roots, source_root=project_source_root,
                 kb_search_cmd=project_kb_search_cmd,
+                target_package=project_app_package,
                     )
                     continue
                 break  # pass or no retries left

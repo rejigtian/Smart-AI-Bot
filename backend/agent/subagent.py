@@ -112,6 +112,7 @@ async def run_with_subagents(
             source_root=agent.source_root,
             kb_search_cmd=agent.kb_search_cmd,
             language=agent.language,
+            target_package=agent.target_package,
         )
 
         # Execute sub-goal in isolated context
