@@ -97,6 +97,8 @@ export const fetchDevices = () => api.get<Device[]>('/devices').then(r => r.data
 export const createDevice = (name: string) =>
   api.post<Device>('/devices', { name }).then(r => r.data)
 export const deleteDevice = (id: string) => api.delete(`/devices/${id}`)
+export const renameDevice = (id: string, name: string) =>
+  api.patch<Device>(`/devices/${id}`, { name }).then(r => r.data)
 
 // ── App distribution (APK QR download) ───────────────────────────────────────
 

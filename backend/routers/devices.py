@@ -68,6 +68,33 @@ async def create_device(req: TokenCreateRequest, db: AsyncSession = Depends(get_
     )
 
 
+class DeviceRenameRequest(BaseModel):
+    name: str
+
+
+@router.patch("/{device_id}", response_model=DeviceOut)
+async def rename_device(device_id: str, req: DeviceRenameRequest, db: AsyncSession = Depends(get_db)):
+    """Rename a device. The name is backend-owned and won't be overwritten by the
+    Portal's X-Device-Name header (which can't carry non-ASCII reliably)."""
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+    device = await db.get(Device, device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+    device.name = name
+    await db.commit()
+    await db.refresh(device)
+    status = "online" if device.id in connected_devices and connected_devices[device.id].is_connected else "offline"
+    return DeviceOut(
+        id=device.id,
+        name=device.name,
+        token=device.token,
+        status=status,
+        last_seen=device.last_seen.isoformat() if device.last_seen else "",
+    )
+
+
 @router.delete("/{device_id}", status_code=204)
 async def delete_device(device_id: str, db: AsyncSession = Depends(get_db)):
     device = await db.get(Device, device_id)

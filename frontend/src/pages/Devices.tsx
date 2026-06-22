@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import {
-  fetchDevices, createDevice, deleteDevice, fetchAppInfo, fetchServerInfo, Device,
+  fetchDevices, createDevice, deleteDevice, renameDevice, fetchAppInfo, fetchServerInfo, Device,
 } from '../lib/api'
 import LivePanel from '../components/LivePanel'
 
@@ -80,6 +80,17 @@ export default function Devices() {
     mutationFn: deleteDevice,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }),
   })
+
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const renameMut = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => renameDevice(id, name),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['devices'] }); setEditingId(null) },
+  })
+  const saveEdit = () => {
+    if (editingId && editName.trim()) renameMut.mutate({ id: editingId, name: editName.trim() })
+    else setEditingId(null)
+  }
 
   const copyToken = async (device: Device) => {
     const text = device.token
@@ -165,7 +176,32 @@ export default function Devices() {
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">{d.name}</span>
+                      {editingId === d.id ? (
+                        <input
+                          autoFocus
+                          className="font-medium border rounded px-1.5 py-0.5 text-sm min-w-0 flex-1"
+                          value={editName}
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => setEditName(e.target.value)}
+                          onKeyDown={e => {
+                            e.stopPropagation()
+                            if (e.key === 'Enter') saveEdit()
+                            if (e.key === 'Escape') setEditingId(null)
+                          }}
+                          onBlur={saveEdit}
+                        />
+                      ) : (
+                        <>
+                          <span className="font-medium">{d.name}</span>
+                          <button
+                            className="text-xs text-gray-400 hover:text-primary"
+                            title="重命名"
+                            onClick={e => { e.stopPropagation(); setEditingId(d.id); setEditName(d.name) }}
+                          >
+                            ✎
+                          </button>
+                        </>
+                      )}
                       <span
                         className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
                           d.status === 'online'

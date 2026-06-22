@@ -32,10 +32,22 @@ class DeviceConnection:
     is_connected: bool = True
 
 
+def _header_utf8(value: str) -> str:
+    """Recover a UTF-8 header value that Starlette decoded as latin-1.
+
+    HTTP headers are latin-1/ASCII on the wire, so a UTF-8 name (e.g. Chinese)
+    arrives mojibaked. Best-effort re-decode; returns the original on failure
+    (and stays mangled if the client already lost the bytes to '?')."""
+    try:
+        return value.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return value
+
+
 async def portal_websocket_endpoint(websocket: WebSocket):
     headers = dict(websocket.headers)
     authorization = headers.get("authorization", "")
-    device_name = headers.get("x-device-name", "Unknown")
+    device_name = _header_utf8(headers.get("x-device-name", "Unknown"))
 
     if not authorization.startswith("Bearer "):
         await websocket.accept()
@@ -60,11 +72,16 @@ async def portal_websocket_endpoint(websocket: WebSocket):
                             device_name=device_name, token=token)
     connected_devices[db_device_id] = conn
 
+    # The device name is owned by the backend (set when the device is created /
+    # renamed in the web UI). Never overwrite a real DB name with the header
+    # value — it travels over latin-1 HTTP headers and mangles non-ASCII names
+    # to "??". Only fall back to the header for a device that has no real name.
+    has_real_name = bool(device_row.name) and device_row.name != "Unknown"
+    resolved_name = device_row.name if has_real_name else (device_name or device_row.name)
     async with AsyncSessionLocal() as session:
         await session.execute(
             update(Device).where(Device.token == token)
-            .values(status="online", last_seen=datetime.utcnow(),
-                    name=device_name or device_row.name)
+            .values(status="online", last_seen=datetime.utcnow(), name=resolved_name)
         )
         await session.commit()
 
