@@ -119,6 +119,8 @@ The exported HTML report is fully self-contained, and its step replay can **auto
 
 ## Quick Start
 
+> **New here?** The [**Getting Started** guide](docs/getting-started.md) walks you from zero to your first test run with screenshots. The steps below are the condensed version.
+
 ### Option 1 — Docker (recommended for deployment)
 
 Requires Docker 20+ with Compose v2. No Python / Node install needed on the host.
@@ -247,6 +249,7 @@ Detailed design: [`docs/agent-architecture.md`](docs/agent-architecture.md).
 
 | Doc | What it covers |
 |-----|----------------|
+| [Getting Started](docs/getting-started.md) | Zero-to-first-test walkthrough — connect a device, write & run a case |
 | [Deployment](docs/deployment.md) | Docker, public-server (HTTPS/WSS) setup, backups |
 | [Agent Architecture](docs/agent-architecture.md) | 6-layer agent + Planner / Subagent design |
 | [Android Portal](docs/android-optimization.md) | Portal App performance & connection stability |

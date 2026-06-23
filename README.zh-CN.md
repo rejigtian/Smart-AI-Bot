@@ -121,6 +121,8 @@ Smart-AI-Bot 是一个面向 Android 应用 QA 团队（或希望自动化操作
 
 ## 快速开始
 
+> **第一次用？** [**快速上手**指南](docs/getting-started.zh-CN.md) 带图从零走到第一个测试跑通。下面是精简版。
+
 ### 方式一 — Docker（推荐用于部署）
 
 需要 Docker 20+ 和 Compose v2，宿主机不用装 Python / Node。
@@ -239,6 +241,7 @@ Android 设备 (Portal App)
 
 | 文档 | 说明 |
 |------|------|
+| [快速上手](docs/getting-started.zh-CN.md) | 从零跑通第一个测试 —— 连设备、写用例、运行、看报告 |
 | [部署指南](docs/deployment.zh-CN.md) | Docker、公网服务器（HTTPS/WSS）部署、备份 |
 | [Agent 架构](docs/agent-architecture.md) | 6 层 Agent + Planner / Subagent 详细设计 |
 | [Android Portal](docs/android-optimization.md) | Portal App 性能与连接稳定性 |

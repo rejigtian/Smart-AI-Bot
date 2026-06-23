@@ -51,6 +51,10 @@ export default function Devices() {
   const [qrDevice, setQrDevice] = useState<Device | null>(null)
   const [showDownload, setShowDownload] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // "How to connect" guide: stays available even when devices already exist
+  // (a teammate may connect their own phone to a shared backend). Defaults open
+  // when there are no devices yet; once the user toggles it, their choice sticks.
+  const [guideOpen, setGuideOpen] = useState<boolean | null>(null)
 
   const { data: devices = [], isLoading } = useQuery({
     queryKey: ['devices'],
@@ -151,10 +155,55 @@ export default function Devices() {
 
       {isLoading && <p className="text-gray-500">Loading…</p>}
 
+      {!isLoading && (
+        <details
+          className="mb-6 border rounded-lg bg-primary-soft/40 px-4 py-3 text-sm"
+          open={guideOpen ?? devices.length === 0}
+          onToggle={e => setGuideOpen((e.target as HTMLDetailsElement).open)}
+        >
+          <summary className="cursor-pointer font-semibold text-primary-deep select-none">
+            📖 {t('如何连接设备并跑第一个测试', 'How to connect a device & run your first test')}
+          </summary>
+          <ol className="list-decimal ml-5 mt-3 space-y-2 text-gray-700">
+            <li>
+              <strong>{t('安装 Portal App', 'Install the Portal app')}</strong>
+              {t('：点右上的', ' — tap')} <strong>📱 {t('安装 App', 'Install App')}</strong>
+              {t('，用手机浏览器扫码下载并安装（安装时允许「未知来源」）。', ', scan it with the phone browser to download & install (allow "unknown sources").')}
+            </li>
+            <li>
+              <strong>{t('开启无障碍服务', 'Enable the accessibility service')}</strong>
+              {t('：在手机「系统设置 → 无障碍」里开启', " — in the phone's System Settings → Accessibility, turn on")} <strong>AgentAccessibilityService</strong>
+              {t('。底部出现常驻通知即代表已在线。', '. The persistent notification means it is online.')}
+            </li>
+            <li>
+              <strong>{t('配对设备', 'Pair the device')}</strong>
+              {t('：点右上', ' — tap')} <strong>+ Generate Token</strong> {t('生成一台设备，再点它的', 'to create a device, then tap')} <strong>Show QR</strong>
+              {t('，在 Portal app 里点「扫码连接」扫一下即可。', ' on it and scan it from "Scan QR" in the Portal app.')}
+            </li>
+            <li>
+              <strong>{t('跑第一个测试', 'Run your first test')}</strong>
+              {t('：连上后到', ' — once connected, go to')} <strong>Test Suites</strong>
+              {t('新建用例 → 选设备和模型 → 点 Run 🎉', ', add a case, pick a device + model, and hit Run 🎉')}
+            </li>
+          </ol>
+          <p className="mt-3 text-xs text-gray-500">
+            {t('完整图文教程：', 'Full step-by-step guide: ')}
+            <a
+              className="text-primary underline"
+              href="https://github.com/rejigtian/Smart-AI-Bot/blob/main/docs/getting-started.md"
+              target="_blank"
+              rel="noreferrer"
+            >
+              docs/getting-started.md
+            </a>
+          </p>
+        </details>
+      )}
+
       {devices.length === 0 && !isLoading && (
         <div className="text-center py-16 text-gray-400">
-          <p className="text-lg">No devices yet.</p>
-          <p className="text-sm mt-1">Generate a token, then configure Portal app with it.</p>
+          <p className="text-lg">{t('还没有设备', 'No devices yet')}</p>
+          <p className="text-sm mt-1">{t('按上方「如何连接设备」三步连上你的第一台手机。', 'Follow the 3 steps above to connect your first phone.')}</p>
         </div>
       )}
 
