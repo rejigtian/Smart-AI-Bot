@@ -1,11 +1,13 @@
 """
 Self knowledge base — conversational notes the user dictates about the app
 under test, organized by an LLM into structured entries and stored as readable
-markdown under ``test_knowledge/notes/``.
+markdown under the persistent data dir (``backend/data/notes/`` →
+``/app/data/notes`` in Docker, inside the mounted volume).
 
 This is project-agnostic plumbing: the *feature* (dictate → organize → store →
-query) ships to OSS, but the notes themselves live under ``test_knowledge/``
-(excluded from the OSS sync), so each user's content stays private.
+query) ships to OSS, but the notes themselves are per-user runtime data — they
+live under ``data/`` (gitignored and excluded from the OSS sync), so each
+user's content stays private and survives container rebuilds.
 
 Notes are a queryable reference library — they are NOT auto-injected into the
 agent at test time (unlike ``test_knowledge/features/``).
@@ -27,8 +29,36 @@ from core.i18n import current_language, lang_directive
 logger = logging.getLogger(__name__)
 
 # ── Paths ─────────────────────────────────────────────────────────────────
-NOTES_DIR = Path(__file__).resolve().parent.parent.parent / "test_knowledge" / "notes"
+# Notes live in the persistent data dir (alongside settings.json). In Docker
+# this resolves to /app/data/notes, inside the mounted `backend-data` volume,
+# so they survive `docker compose up --build`. They previously lived one level
+# up under test_knowledge/notes (= /test_knowledge/notes in the container),
+# OUTSIDE the volume — every rebuild silently wiped them.
+NOTES_DIR = Path(__file__).resolve().parent.parent / "data" / "notes"
+_LEGACY_NOTES_DIR = Path(__file__).resolve().parent.parent.parent / "test_knowledge" / "notes"
 _SETTINGS = Path(__file__).resolve().parent.parent / "data" / "settings.json"
+
+
+def _migrate_legacy_notes() -> None:
+    """One-time move of notes from the old test_knowledge/notes location into the
+    persistent data dir. Idempotent and best-effort — never blocks startup.
+
+    Helps existing local installs upgrade without losing notes. (In a rebuilt
+    container the old dir is already gone, so this is a no-op there.)"""
+    try:
+        if _LEGACY_NOTES_DIR == NOTES_DIR or not _LEGACY_NOTES_DIR.is_dir():
+            return
+        NOTES_DIR.mkdir(parents=True, exist_ok=True)
+        for p in _LEGACY_NOTES_DIR.glob("*.md"):
+            dest = NOTES_DIR / p.name
+            if not dest.exists():
+                p.replace(dest)
+                logger.info("Migrated note %s → %s", p.name, NOTES_DIR)
+    except Exception:
+        logger.warning("Legacy notes migration skipped", exc_info=True)
+
+
+_migrate_legacy_notes()
 
 # A note file embeds its full metadata as JSON inside an HTML comment so the
 # markdown stays human-readable while parsing stays dependency-free (no YAML).
