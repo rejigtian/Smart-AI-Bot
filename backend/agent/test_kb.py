@@ -160,18 +160,24 @@ def _score_match(query: str, entry: dict) -> int:
     return score
 
 
-def search_feature(query: str, top_k: int = 1, extra_roots: Optional[list[str]] = None,
-                   matches_out: Optional[list] = None) -> str:
-    """Search the test KB for relevant feature(s) and return markdown content.
+def search_feature(query: str, extra_roots: Optional[list[str]] = None,
+                   matches_out: Optional[list] = None, char_budget: int = 6000) -> str:
+    """Search the test KB and return the most relevant entries as markdown.
+
+    Local feature docs, an imported project's KB dirs, and the user's dictated
+    notes all compete on ONE relevance ruler (no per-source quota). Matches are
+    packed in score order until ``char_budget`` is spent, so a long doc or a
+    pile of low-relevance notes can't flood the agent's context — the single
+    best match is always included.
 
     Args:
         query: task description (e.g. "open settings page and check version")
-        top_k: how many top features to return
         extra_roots: additional KB directories to search (e.g. an imported
             Project Profile's kb_path). Scanned fresh; missing dirs are ignored.
+        char_budget: soft cap (~chars) on the total injected text.
 
     Returns:
-        Concatenated markdown content of top-k features, or empty string.
+        Concatenated markdown of the selected entries, or empty string.
     """
     feature_entries = list(_load_index())
     for root in (extra_roots or []):
@@ -180,30 +186,33 @@ def search_feature(query: str, top_k: int = 1, extra_roots: Optional[list[str]] 
         except Exception:
             continue
 
-    def _rank(entries: list[dict], k: int) -> list[tuple]:
-        scored = sorted(((_score_match(query, e), e) for e in entries), key=lambda x: -x[0])
-        return [(s, e) for s, e in scored[:k] if s >= 10]
-
-    # Features fill the top_k slots; matching notes are appended as extra
-    # context (capped) so a便利贴 never crowds out the relevant feature doc.
-    top = _rank(feature_entries, top_k) + _rank(_index_notes(), 3)
-    if not top:
+    candidates = feature_entries + _index_notes()
+    ranked = sorted(((_score_match(query, e), e) for e in candidates), key=lambda x: -x[0])
+    ranked = [(s, e) for s, e in ranked if s >= 10]
+    if not ranked:
         return ""
 
-    parts = []
-    for score, entry in top:
+    parts: list[str] = []
+    used = 0
+    for score, entry in ranked:
         is_note = entry.get("source") == "note"
-        logger.info("Test KB match: %s/%s [%s] (score=%d)",
-                    entry["module"], entry["slug"], entry.get("source", "local"), score)
+        # Notes are already tidy prose; features get section extraction.
+        extracted = entry["content"] if is_note else _extract_agent_relevant(entry["content"])
+        head = "Note" if is_note else "Test KB"
+        block = f"# {head}: {entry['title']}\n\n{extracted}"
+        # Always keep the single best match; afterwards, stop once the budget
+        # is spent rather than dumping every weak hit.
+        if parts and used + len(block) > char_budget:
+            break
+        parts.append(block)
+        used += len(block)
+        logger.info("Test KB match: %s/%s [%s] (score=%d, +%d chars)",
+                    entry["module"], entry["slug"], entry.get("source", "local"), score, len(block))
         if matches_out is not None:
             matches_out.append({
                 "title": entry["title"], "slug": entry["slug"],
                 "source": entry.get("source", "local"), "score": score,
             })
-        # Notes are already tidy prose; features get section extraction.
-        extracted = entry["content"] if is_note else _extract_agent_relevant(entry["content"])
-        head = "Note" if is_note else "Test KB"
-        parts.append(f"# {head}: {entry['title']}\n\n{extracted}")
 
     return "\n\n---\n\n".join(parts)
 
