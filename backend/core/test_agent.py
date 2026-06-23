@@ -499,26 +499,33 @@ class TestCaseAgent:
         kb_message = ""
         kb_raw = ""          # raw knowledge text, also fed to the planner
         kb_log = ""
-        # Preferred: the project's own search CLI (semantic). Falls back to the
-        # naive keyword search over local + project kb_path.
+        # Merge BOTH sources so local knowledge always participates:
+        #   1) the project's own search CLI (semantic, if configured), and
+        #   2) the local test_knowledge features + dictated notes.
+        # The project CLI no longer suppresses local KB — they're complementary.
+        kb_parts: list[str] = []
+        kb_logs: list[str] = []
         if self.kb_search_cmd:
             try:
                 from core.kb_search import run_kb_search
-                kb_raw = await asyncio.to_thread(run_kb_search, self.kb_search_cmd, kb_query, 5)
-                if kb_raw:
-                    kb_log = f"项目检索 `{self.kb_search_cmd}`"
+                proj_raw = await asyncio.to_thread(run_kb_search, self.kb_search_cmd, kb_query, 5)
+                if proj_raw:
+                    kb_parts.append(proj_raw)
+                    kb_logs.append(f"项目检索 `{self.kb_search_cmd}`")
             except Exception:
                 pass
-        if not kb_raw:
-            try:
-                from agent.test_kb import search_feature
-                matches: list = []
-                kb_raw = search_feature(kb_query, extra_roots=self.project_kb_roots, matches_out=matches)
-                if kb_raw and matches:
-                    _src = {"project": "项目", "note": "笔记"}
-                    kb_log = ", ".join(f"{m['title']}「{_src.get(m['source'], '本地')}」" for m in matches)
-            except Exception:
-                pass
+        try:
+            from agent.test_kb import search_feature
+            matches: list = []
+            local_raw = search_feature(kb_query, extra_roots=self.project_kb_roots, matches_out=matches)
+            if local_raw and matches:
+                kb_parts.append(local_raw)
+                _src = {"project": "项目", "note": "笔记"}
+                kb_logs.append(", ".join(f"{m['title']}「{_src.get(m['source'], '本地')}」" for m in matches))
+        except Exception:
+            pass
+        kb_raw = "\n\n---\n\n".join(kb_parts)
+        kb_log = " + ".join(kb_logs)
         if kb_raw:
             kb_message = (
                 "[Test Knowledge — feature-specific reference]\n\n"
