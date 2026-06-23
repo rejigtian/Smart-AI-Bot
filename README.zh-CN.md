@@ -1,5 +1,13 @@
 # Smart-AI-Bot
 
+[![Stars](https://img.shields.io/github/stars/rejigtian/Smart-AI-Bot?style=flat&logo=github)](https://github.com/rejigtian/Smart-AI-Bot/stargazers)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/rejigtian/Smart-AI-Bot)](https://github.com/rejigtian/Smart-AI-Bot/commits)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#贡献)
+![Python](https://img.shields.io/badge/Python-3.9+-blue?logo=python&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-React-3178C6?logo=typescript&logoColor=white)
+![Android](https://img.shields.io/badge/Android-Kotlin-3DDC84?logo=android&logoColor=white)
+
 > AI 驱动的 Android 自动化测试平台 — 用自然语言编写测试用例，或者导入 xmind / md 等文件生成用例。Agent 在真实设备上执行，结果可视化追踪。也可以当作自动化操作手机的工具来用，具备自学习与增强回放功能。
 
 [English](README.md) · **简体中文**
@@ -44,6 +52,21 @@ Smart-AI-Bot 是一个面向 Android 应用 QA 团队（或希望自动化操作
 6. 失败用例自动总结教训，下次同任务自动避免
 
 不需要 XPath，不需要 Appium，不需要录制脚本。
+
+### 和同类有什么不同
+
+大多数 AI 手机工具止步于"用大模型操控一台设备"。Smart-AI-Bot 是**围绕 agent 的测试平台**——把 QA 每天真正要用的那一层补齐了：
+
+| | Smart-AI-Bot | AI agent 库<br/>(droidrun、Mobile-Agent、AutoGLM) | 脚本框架<br/>(Appium、Maestro) |
+|---|:---:|:---:|:---:|
+| 自然语言写用例 | ✅ | ✅ | ❌ 脚本 / YAML |
+| 真机、**任意网络、免 ADB 线** | ✅ 反向 WebSocket Portal | ⚠️ 多数靠 ADB / USB | ❌ 本地 / USB |
+| 测试管理 UI（套件 / 历史 / run 对比 / 通过率趋势） | ✅ | ❌ 仅库 | ⚠️ 部分（付费云） |
+| 从自身失败中学习（教训回注为护栏） | ✅ | ❌ | ❌ |
+| 自包含、可分享的 HTML 报告 | ✅ | ❌ | ⚠️ |
+| 导入 xmind / Excel / Markdown | ✅ | ❌ | ❌ |
+
+诚实的取舍：目前**仅支持 Android**（Midscene / Appium 还覆盖 iOS 和 Web），Canvas/游戏类纯视觉的鲁棒性也还不及 Midscene 的 Set-of-Marks。完整对比见 → [Comparison](docs/comparison.zh-CN.md)。
 
 ---
 

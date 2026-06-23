@@ -1,5 +1,13 @@
 # Smart-AI-Bot
 
+[![Stars](https://img.shields.io/github/stars/rejigtian/Smart-AI-Bot?style=flat&logo=github)](https://github.com/rejigtian/Smart-AI-Bot/stargazers)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/rejigtian/Smart-AI-Bot)](https://github.com/rejigtian/Smart-AI-Bot/commits)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
+![Python](https://img.shields.io/badge/Python-3.9+-blue?logo=python&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-React-3178C6?logo=typescript&logoColor=white)
+![Android](https://img.shields.io/badge/Android-Kotlin-3DDC84?logo=android&logoColor=white)
+
 > AI-powered Android UI test automation platform — write test cases in plain English (or import from xmind / Markdown), have an AI agent run them on real devices, and get visual replay reports. Doubles as a general phone-automation tool with self-learning replay.
 
 **English** · [简体中文](README.zh-CN.md)
@@ -42,6 +50,21 @@ Expected: System version is shown, no error dialog.
 The AI agent finds the path, taps, verifies — every step has a screenshot and a thought trace. Failed cases automatically extract a "lesson learned"; the next time the same task runs, the agent avoids the same mistake.
 
 No XPath, no Appium, no recorded scripts.
+
+### How it's different
+
+Most AI phone tools stop at *"control a device with an LLM."* Smart-AI-Bot is the **test platform around that agent** — the parts QA teams need to actually run tests every day:
+
+| | Smart-AI-Bot | AI agent libs<br/>(droidrun, Mobile-Agent, AutoGLM) | Scripted frameworks<br/>(Appium, Maestro) |
+|---|:---:|:---:|:---:|
+| Plain-language test cases | ✅ | ✅ | ❌ scripts / YAML |
+| Real devices over **any network, no ADB cable** | ✅ reverse-WebSocket Portal | ⚠️ usually ADB / USB | ❌ local / USB |
+| Test-management UI (suites, run history, run compare, pass-rate trend) | ✅ | ❌ library only | ⚠️ partial (paid cloud) |
+| Learns from its own failures (guardrails re-injected) | ✅ | ❌ | ❌ |
+| Self-contained shareable HTML reports | ✅ | ❌ | ⚠️ |
+| Import from xmind / Excel / Markdown | ✅ | ❌ | ❌ |
+
+Honest trade-offs: it's **Android-only** today (Midscene / Appium also cover iOS & web), and pure-vision robustness on Canvas/game UIs still trails Midscene's Set-of-Marks. Full breakdown → [Comparison](docs/comparison.md).
 
 ---
 
