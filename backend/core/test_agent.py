@@ -330,8 +330,9 @@ class TestCaseAgent:
         self._tools = list(TOOLS)
         if self.source_root:
             self._tools += SOURCE_TOOLS
-        if self.kb_search_cmd:
-            self._tools += KB_TOOLS
+        # search_knowledge is always available: it queries local features +
+        # dictated notes (always present) and the project CLI when configured.
+        self._tools += KB_TOOLS
         if self.project_kb_roots:  # KB docs on disk → can read full docs
             self._tools += KB_READ_TOOLS
         self.model = model
@@ -438,9 +439,8 @@ class TestCaseAgent:
             from core.source_search import glob_source
             return await asyncio.to_thread(glob_source, self.source_root, args.get("pattern", ""))
         if fn_name == "search_knowledge":
-            from core.kb_search import run_kb_search
-            res = await asyncio.to_thread(run_kb_search, self.kb_search_cmd, args.get("query", ""), 5)
-            return res or "No knowledge found for that query."
+            kb_raw, _ = await self._retrieve_kb(args.get("query", ""))
+            return kb_raw or "No knowledge found for that query."
         if fn_name == "read_knowledge":
             from core.kb_search import read_kb_doc
             return await asyncio.to_thread(read_kb_doc, self.project_kb_roots, args.get("path", ""))
@@ -451,6 +451,34 @@ class TestCaseAgent:
                 int(args.get("offset", 1) or 1), int(args.get("limit", 400) or 400),
             )
         return f"Unknown tool: {fn_name}"
+
+    async def _retrieve_kb(self, query: str) -> tuple[str, str]:
+        """Retrieve test knowledge for a query, merging the project's search CLI
+        (if configured) with local feature docs + dictated notes. Returns
+        (text, source_log). Shared by the opening injection and the agent's
+        on-demand search_knowledge tool, so both see the same knowledge."""
+        kb_parts: list[str] = []
+        kb_logs: list[str] = []
+        if self.kb_search_cmd:
+            try:
+                from core.kb_search import run_kb_search
+                proj_raw = await asyncio.to_thread(run_kb_search, self.kb_search_cmd, query, 5)
+                if proj_raw:
+                    kb_parts.append(proj_raw)
+                    kb_logs.append(f"项目检索 `{self.kb_search_cmd}`")
+            except Exception:
+                pass
+        try:
+            from agent.test_kb import search_feature
+            matches: list = []
+            local_raw = search_feature(query, extra_roots=self.project_kb_roots, matches_out=matches)
+            if local_raw and matches:
+                kb_parts.append(local_raw)
+                _src = {"project": "项目", "note": "笔记"}
+                kb_logs.append(", ".join(f"{m['title']}「{_src.get(m['source'], '本地')}」" for m in matches))
+        except Exception:
+            pass
+        return "\n\n---\n\n".join(kb_parts), " + ".join(kb_logs)
 
     async def run(self, case: TestCaseData) -> CaseResult:
         goal = (
@@ -497,35 +525,10 @@ class TestCaseAgent:
         exp = "" if case.expected.strip() in _BOILERPLATE else case.expected
         kb_query = f"{case.path} {exp}".strip()
         kb_message = ""
-        kb_raw = ""          # raw knowledge text, also fed to the planner
-        kb_log = ""
-        # Merge BOTH sources so local knowledge always participates:
-        #   1) the project's own search CLI (semantic, if configured), and
-        #   2) the local test_knowledge features + dictated notes.
-        # The project CLI no longer suppresses local KB — they're complementary.
-        kb_parts: list[str] = []
-        kb_logs: list[str] = []
-        if self.kb_search_cmd:
-            try:
-                from core.kb_search import run_kb_search
-                proj_raw = await asyncio.to_thread(run_kb_search, self.kb_search_cmd, kb_query, 5)
-                if proj_raw:
-                    kb_parts.append(proj_raw)
-                    kb_logs.append(f"项目检索 `{self.kb_search_cmd}`")
-            except Exception:
-                pass
-        try:
-            from agent.test_kb import search_feature
-            matches: list = []
-            local_raw = search_feature(kb_query, extra_roots=self.project_kb_roots, matches_out=matches)
-            if local_raw and matches:
-                kb_parts.append(local_raw)
-                _src = {"project": "项目", "note": "笔记"}
-                kb_logs.append(", ".join(f"{m['title']}「{_src.get(m['source'], '本地')}」" for m in matches))
-        except Exception:
-            pass
-        kb_raw = "\n\n---\n\n".join(kb_parts)
-        kb_log = " + ".join(kb_logs)
+        # Seed the agent with the most relevant knowledge up front. The same
+        # retrieval is also exposed as the search_knowledge tool, so the agent
+        # can re-query on demand when it gets stuck mid-run.
+        kb_raw, kb_log = await self._retrieve_kb(kb_query)  # kb_raw also feeds the planner
         if kb_raw:
             kb_message = (
                 "[Test Knowledge — feature-specific reference]\n\n"

@@ -389,12 +389,14 @@ KB_TOOLS: list[dict] = [
         "function": {
             "name": "search_knowledge",
             "description": (
-                "Query the project's KNOWLEDGE BASE (business/UI flows, entry paths, known "
-                "pitfalls) when you're unsure where a feature lives or how to reach it — e.g. "
-                "'where is <feature>' or '<feature> entry path'. Returns ranked doc FRAGMENTS, "
-                "each with its doc path; long docs are truncated. To read a full doc, pass that "
-                "path to read_knowledge (NOT read_source — these are docs, not source files). "
-                "Prefer this over blind tapping when lost."
+                "Query the TEST KNOWLEDGE BASE — local feature docs, the tester's dictated "
+                "notes, and (if configured) the project's own KB — when you're unsure where a "
+                "feature lives, how to reach it, what an in-app term/slang means, or what "
+                "pitfalls to expect. E.g. 'where is <feature>', '<feature> entry path', or "
+                "'what is <slang>'. Returns ranked, relevance-packed knowledge. Call this "
+                "whenever you get stuck or land on an unfamiliar screen — prefer it over blind "
+                "tapping. For a knowledge-base doc path it returns, use read_knowledge (NOT "
+                "read_source — these are docs, not source files)."
             ),
             "parameters": {
                 "type": "object",
