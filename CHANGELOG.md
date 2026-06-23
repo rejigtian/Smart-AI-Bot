@@ -252,7 +252,7 @@ All notable changes to Smart-AI-Bot are documented here.
 - **New "cyan-terminal" design system** — a geeky/technical visual language (electric-cyan accent, monospace data, dark terminal log blocks), an app icon, and a provider-scoped Settings page.
 
 ### Fixed
-- **App launch reliability** — `list_packages` now returns each app's display name (e.g. `我是卧底 | com.wepie.wespy`), so the agent stops guessing package names; `start_app` reports real launch failures instead of false success.
+- **App launch reliability** — `list_packages` now returns each app's display name (e.g. `My App | com.example.myapp`), so the agent stops guessing package names; `start_app` reports real launch failures instead of false success.
 - **Agent loop robustness** — when a model narrates an action in plain text instead of emitting a tool call, the step is retried with `tool_choice="required"`; repeated no-action steps abort fast instead of burning the whole budget.
 
 ### Android
@@ -270,7 +270,7 @@ All notable changes to Smart-AI-Bot are documented here.
 - **全新「电青终端」设计体系** —— 极客/科技风视觉（电青主色、等宽数据、深色终端日志块）、应用图标、以及 provider 优先的设置页。
 
 ### 修复
-- **App 启动可靠性** —— `list_packages` 现在返回每个 App 的中文显示名（如 `我是卧底 | com.wepie.wespy`），Agent 不再瞎猜包名；`start_app` 启动失败如实报错，不再谎报成功。
+- **App 启动可靠性** —— `list_packages` 现在返回每个 App 的中文显示名（如 `示例App | com.example.myapp`），Agent 不再瞎猜包名；`start_app` 启动失败如实报错，不再谎报成功。
 - **Agent 循环鲁棒性** —— 模型只用文字描述动作而不发工具调用时，自动用 `tool_choice="required"` 重试；连续无动作时快速失败，不再耗光整轮步数。
 
 ### Android

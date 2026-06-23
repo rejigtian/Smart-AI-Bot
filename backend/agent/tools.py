@@ -418,7 +418,7 @@ KB_READ_TOOLS: list[dict] = [
             "name": "read_knowledge",
             "description": (
                 "Read the FULL knowledge-base doc behind a search_knowledge fragment, by the "
-                "doc path it returned (e.g. 'features/voice-room/foo.md'). Use this — not "
+                "doc path it returned (e.g. 'features/home/foo.md'). Use this — not "
                 "read_source — for knowledge-base paths."
             ),
             "parameters": {

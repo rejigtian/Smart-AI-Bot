@@ -227,7 +227,7 @@ Detailed design: [`docs/agent-architecture.md`](docs/agent-architecture.md).
 | [Deployment](docs/deployment.md) | Docker, public-server (HTTPS/WSS) setup, backups |
 | [Agent Architecture](docs/agent-architecture.md) | 6-layer agent + Planner / Subagent design |
 | [Android Portal](docs/android-optimization.md) | Portal App performance & connection stability |
-| [Test KB](test_knowledge/PLAN.md) | Building the test knowledge base for your own app |
+| [Test KB](test_knowledge/README.md) | Building the test knowledge base for your own app |
 | [Roadmap](docs/roadmap.md) | Done features + priorities |
 | [Comparison](docs/comparison.md) | DroidRun / Midscene / AutoGLM technical comparison |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues — connection / screenshot / recognition |

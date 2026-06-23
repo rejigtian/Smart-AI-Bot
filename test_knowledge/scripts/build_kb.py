@@ -5,8 +5,8 @@ Test KB 构建器 — 从源码 + 业务 KB + 历史 LessonLearned 生成/更新
 
 Usage:
     python test_knowledge/scripts/build_kb.py --all                    # 全量
-    python test_knowledge/scripts/build_kb.py --module voice-room      # 单模块
-    python test_knowledge/scripts/build_kb.py --feature xiuxian        # 单 feature
+    python test_knowledge/scripts/build_kb.py --module home            # 单模块
+    python test_knowledge/scripts/build_kb.py --feature login          # 单 feature
     python test_knowledge/scripts/build_kb.py --lessons-only           # 只更新坑点
     python test_knowledge/scripts/build_kb.py --config PATH            # 自定义 config
 

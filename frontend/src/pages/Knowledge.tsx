@@ -93,7 +93,7 @@ export default function Knowledge() {
         <textarea
           rows={3}
           className="w-full border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-          placeholder={t('例如：会玩修仙就是小小云端', 'e.g. In this app, "xiuxian" refers to the cloud realm')}
+          placeholder={t('例如：本App里"金币"和"钻石"是两种不同货币', 'e.g. In this app, "coins" and "gems" are two different currencies')}
           value={text}
           onChange={e => setText(e.target.value)}
         />

@@ -219,7 +219,7 @@ Android 设备 (Portal App)
 | [部署指南](docs/deployment.zh-CN.md) | Docker、公网服务器（HTTPS/WSS）部署、备份 |
 | [Agent 架构](docs/agent-architecture.md) | 6 层 Agent + Planner / Subagent 详细设计 |
 | [Android Portal](docs/android-optimization.md) | Portal App 性能与连接稳定性 |
-| [Test KB 使用](test_knowledge/PLAN.md) | 测试知识库构建、AUTO/HUMAN 区段、检索机制 |
+| [Test KB 使用](test_knowledge/README.md) | 测试知识库构建、AUTO/HUMAN 区段、检索机制 |
 | [Roadmap](docs/roadmap.md) | 已完成功能清单 + 待办优先级 |
 | [竞品对比](docs/comparison.zh-CN.md) | DroidRun / Midscene / AutoGLM 技术路线对比 |
 | [故障排查](docs/troubleshooting.zh-CN.md) | 常见问题（连接、截图、识别）排查清单 |
