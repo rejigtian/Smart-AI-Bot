@@ -523,7 +523,10 @@ class TestCaseAgent:
         # doesn't pollute retrieval by matching any doc mentioning "任务".
         _BOILERPLATE = {"", "任务完成", "完成", "成功", "通过", "pass", "ok", "done"}
         exp = "" if case.expected.strip() in _BOILERPLATE else case.expected
-        kb_query = f"{case.path} {exp}".strip()
+        # Prefer the clean retrieval text when provided (tree/DFS runs set `path`
+        # to a verbose instruction — see TestCaseData.retrieval_query). Otherwise
+        # the path itself is already a focused query (legacy single cases).
+        kb_query = (getattr(case, "retrieval_query", "") or f"{case.path} {exp}").strip()
         kb_message = ""
         # Seed the agent with the most relevant knowledge up front. The same
         # retrieval is also exposed as the search_knowledge tool, so the agent

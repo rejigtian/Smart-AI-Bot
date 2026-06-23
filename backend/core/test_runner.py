@@ -244,7 +244,10 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
                     f"VERIFY: {case_row.expected}"
                 )
             prev_path = case_row.path
-            case_data = TestCaseData(path=goal, expected=case_row.expected)
+            case_data = TestCaseData(
+                path=goal, expected=case_row.expected,
+                retrieval_query=f"{case_row.path} {case_row.expected or ''}".strip(),
+            )
 
             # Cross-run memory: a soft reference from this case's best prior run
             # (starred, else last pass) + lessons distilled from past mistakes.
@@ -486,7 +489,10 @@ async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20,
                     f"最终验证：{flat.expected or '完成上述全部步骤即视为通过（无额外结果验证）'}"
                 )
             prev_node_id = target.node_id
-            case_data = TestCaseData(path=goal, expected=flat.expected, steps=[])
+            case_data = TestCaseData(
+                path=goal, expected=flat.expected, steps=[],
+                retrieval_query=f"{flat.path} {flat.expected or ''}".strip(),
+            )
 
             result_row = result_rows.get(target.node_id)
             # Mark this case running so the live result tree shows where we are

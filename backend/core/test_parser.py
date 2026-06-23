@@ -43,6 +43,13 @@ class TestCaseData:
     path: str       # "Module > Scenario > Condition"
     expected: str   # leaf node — the legacy single-assertion text
     steps: list[Step] = field(default_factory=list)
+    # Clean, feature-focused text for KB retrieval. When empty, retrieval falls
+    # back to `path`. Tree/DFS runs set `path` to a verbose agent instruction
+    # (DFS boilerplate + step list), which makes a terrible KB query — generic
+    # words match unrelated sibling docs. They pass the bare path/expected here
+    # so the opening retrieval stays specific. The agent can still query for
+    # more mid-run via the search_knowledge tool.
+    retrieval_query: str = ""
 
 
 def _split_step(text: str) -> Step | None:
