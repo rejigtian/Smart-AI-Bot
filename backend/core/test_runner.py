@@ -94,6 +94,23 @@ async def _suite_app_package(suite_id: str) -> str:
         return ""
 
 
+async def _force_stop_app_after_run(device, package: str, emit) -> None:
+    """Force-stop the app under test once a run finishes, so the next run starts
+    from a clean cold state instead of leaving the app on whatever screen the
+    last case ended on (or relying on the agent to navigate back to home).
+
+    Best-effort: no-op when the suite has no configured app_package, and a
+    failure here never affects the run's result. Uses the Portal's `app/stop`
+    (am force-stop) via WebSocketDevice.stop_app."""
+    if not package:
+        return
+    try:
+        await device.stop_app(package)
+        await emit(f"🛑 Force-stopped {package}")
+    except Exception as exc:
+        await emit(f"(could not force-stop {package}: {exc})")
+
+
 async def _project_kb_roots(suite_id: str) -> list:
     """Extra KB dirs from the Project Profile matching this suite's app_package.
 
@@ -329,6 +346,7 @@ async def execute_batch_run(run_id: str, state: "RunState", base_path: str,
                 .values(status="done", finished_at=datetime.utcnow()))
             await session.commit()
         await emit(f"\nBatch complete: {passed} passed, {failed} failed, {errored} error(s), {skipped} skipped")
+        await _force_stop_app_after_run(device, project_app_package, emit)
 
     except asyncio.CancelledError:
         await emit("⛔ Run cancelled by user")
@@ -556,6 +574,7 @@ async def execute_tree_run(run_id: str, state: "RunState", max_steps: int = 20,
                 .values(status="done", finished_at=datetime.utcnow()))
             await session.commit()
         await emit(f"\nTree run complete: {passed} passed, {failed} failed, {errored} error(s), {skipped} skipped")
+        await _force_stop_app_after_run(device, project_app_package, emit)
 
     except asyncio.CancelledError:
         await emit("⛔ Run cancelled by user")
@@ -900,6 +919,7 @@ async def execute_run(
             f"\nRun complete: {passed} passed, {failed} failed, "
             f"{errored} error(s), {skipped} skipped"
         )
+        await _force_stop_app_after_run(device, project_app_package, emit)
 
         # Send webhook notification
         try:
