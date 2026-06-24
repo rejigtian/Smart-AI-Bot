@@ -105,6 +105,12 @@ async def _force_stop_app_after_run(device, package: str, emit) -> None:
     if not package:
         return
     try:
+        # The Portal's app/stop uses ActivityManager.killBackgroundProcesses,
+        # which only evicts BACKGROUND processes — but the app under test is
+        # still in the FOREGROUND when the run ends, so the kill would no-op.
+        # Press Home first to background it, give the system a beat, then kill.
+        await device.global_action("home")
+        await asyncio.sleep(0.8)
         await device.stop_app(package)
         await emit(f"🛑 Force-stopped {package}")
     except Exception as exc:
