@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { api, fetchDevices } from '../lib/api'
@@ -19,6 +19,17 @@ interface Step {
   description: string
 }
 
+interface RecordEvent {
+  kind: string
+  text?: string
+  contentDescription?: string
+  resourceId?: string
+  className?: string
+  x?: number
+  y?: number
+  ts?: number
+}
+
 interface SnapshotData {
   screenshot_b64: string
   ui_text: string
@@ -34,6 +45,7 @@ const BTN = 'px-3 py-1.5 text-xs rounded border font-medium disabled:opacity-40 
 const BTN_GRAY = `${BTN} border-gray-300 text-gray-700 hover:bg-gray-100`
 const BTN_BLUE = `${BTN} border-primary bg-primary text-white hover:bg-primary-deep`
 const BTN_RED  = `${BTN} border-red-400 text-red-600 hover:bg-red-50`
+const BTN_GREEN = `${BTN} border-green-500 bg-green-500 text-white hover:bg-green-600`
 
 export default function Recorder() {
   const navigate = useNavigate()
@@ -58,6 +70,27 @@ export default function Recorder() {
   const [suiteName, setSuiteName] = useState('')
   const [expected, setExpected] = useState('')
   const [saved, setSaved] = useState<{ suiteId: string } | null>(null)
+
+  // ── Real recording (user operates the phone, we capture taps/scrolls) ──────
+  const [realRecording, setRealRecording] = useState(false)
+  const [realEvents, setRealEvents] = useState<RecordEvent[]>([])
+  const realEventsCursor = useRef(0)
+
+  // Poll captured events while real-recording is active.
+  useEffect(() => {
+    if (!realRecording || !deviceId) return
+    const poll = setInterval(async () => {
+      try {
+        const { data } = await api.get(`/recorder/record/events?device_id=${deviceId}&since=${realEventsCursor.current}`)
+        const events = (data.events ?? []) as RecordEvent[]
+        if (events.length) {
+          realEventsCursor.current += events.length
+          setRealEvents(prev => [...prev, ...events])
+        }
+      } catch { /* transient — ignore */ }
+    }, 800)
+    return () => clearInterval(poll)
+  }, [realRecording, deviceId])
 
   // ── Device selection helpers ────────────────────────────────────────────────
   const selectedDevice = allDevices.find(d => d.id === deviceId)
@@ -146,6 +179,65 @@ export default function Recorder() {
     }
   }
 
+  // ── Real recording ──────────────────────────────────────────────────────────
+
+  const eventToDescription = (e: RecordEvent): string => {
+    const label = e.text || e.contentDescription
+    switch (e.kind) {
+      case 'tap':
+        return label ? `点击 "${label}"` : `点击坐标 (${e.x}, ${e.y})`
+      case 'touch':
+        return `触摸坐标 (${e.x}, ${e.y})`
+      case 'scroll':
+        return `滚动${e.className ? ` (${e.className})` : ''}`
+      case 'input':
+        return `输入文本`
+      default:
+        return e.kind
+    }
+  }
+
+  const startRealRecording = async () => {
+    if (!deviceId) return
+    setSteps([])
+    setSaved(null)
+    setError('')
+    setRealEvents([])
+    realEventsCursor.current = 0
+    try {
+      await api.post(`/recorder/record/start?device_id=${deviceId}`)
+      setRealRecording(true)
+    } catch (e: unknown) {
+      setError((e as Error).message ?? 'Failed to start recording')
+    }
+  }
+
+  const stopRealRecording = async () => {
+    setRealRecording(false)
+    try {
+      const { data } = await api.post<{ events: RecordEvent[] }>(`/recorder/record/stop?device_id=${deviceId}`)
+      const events = data.events ?? []
+      setRealEvents(events)
+      // Convert captured events into recordable steps (reuse the save flow),
+      // deriving inter-action delay_ms from each event's wall-clock timestamp.
+      setSteps(events.map((e, i) => {
+        const delayMs = i === 0 ? 0 : Math.max(0, Math.round(((e as any).ts - (events[i - 1] as any).ts) * 1000))
+        const args: Record<string, unknown> = { ...e, delay_ms: delayMs }
+        // Portal reports device-pixel coordinates; the runner's device.tap()
+        // expects half-size (img) coordinates, so scale down to match.
+        if (typeof e.x === 'number') args.x = Math.round(e.x / 2)
+        if (typeof e.y === 'number') args.y = Math.round(e.y / 2)
+        return {
+          action: e.kind,
+          args,
+          description: eventToDescription(e),
+        }
+      }))
+    } catch (e: unknown) {
+      setError((e as Error).message ?? 'Failed to stop recording')
+    }
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div>
@@ -177,6 +269,13 @@ export default function Recorder() {
             onClick={startRecording}
           >
             {loading ? t('连接中…', 'Connecting…') : t('▶ 开始录制', '▶ Start recording')}
+          </button>
+          <button
+            className={BTN_GREEN}
+            disabled={!deviceId || loading || realRecording}
+            onClick={startRealRecording}
+          >
+            {t('📱 真机录制', '📱 Record on device')}
           </button>
           <p className="w-full text-xs text-gray-400">
             {t('录制模式：选择设备后，在网页上操作即可控制手机并同步记录步骤，完成后保存为可重复运行的测试用例。', 'Recording mode: after selecting a device, operate in the browser to control the phone and record steps in sync, then save as a repeatable test case.')}
@@ -332,6 +431,33 @@ export default function Recorder() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Real recording UI — user operates the phone directly */}
+      {realRecording && (
+        <div className="bg-white border border-green-200 rounded-lg shadow-sm p-5 mb-6">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-sm font-medium">{t('真机录制中 — 请在手机上操作', 'Recording on device — operate the phone now')}</span>
+            <span className="ml-auto text-sm text-gray-400">{realEvents.length} {t('个事件已捕获', 'events captured')}</span>
+            <button className={BTN_RED} onClick={stopRealRecording} disabled={loading}>
+              {t('⏹ 停止录制', '⏹ Stop')}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mb-3">
+            {t('直接在你的手机上点击、滑动、输入，SAB 会实时捕获这些操作和坐标。', 'Tap, scroll and type directly on your phone — SAB captures each interaction and its coordinates in real time.')}
+          </p>
+          {realEvents.length > 0 && (
+            <ol className="space-y-1 max-h-48 overflow-y-auto">
+              {realEvents.map((e, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm">
+                  <span className="shrink-0 font-mono text-xs text-gray-400 mt-0.5 w-5 text-right">{i + 1}.</span>
+                  <span className="text-gray-700">{eventToDescription(e)}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
       )}
 
       {/* Recorded steps */}

@@ -113,6 +113,8 @@ async def run_with_subagents(
             kb_search_cmd=agent.kb_search_cmd,
             language=agent.language,
             target_package=agent.target_package,
+            # sub-goal 已经是分解后的最小单元，禁止再递归分解（否则无限套娃）
+            allow_subagents=False,
         )
 
         # Execute sub-goal in isolated context

@@ -68,6 +68,11 @@ Rules:
 - Each sub-goal should describe a milestone, NOT a single tap/scroll.
   Good: "Navigate to the Settings > About Phone page"
   Bad: "Tap the Settings icon" (too granular)
+- ⚠️ Tool calls are NOT UI navigation. If the task involves calling a function \
+tool (start_app, list_packages, etc.), describe that tool call as \
+ONE sub-goal directly. Do NOT decompose it \
+into "open a chat/assistant UI and type the command" — tools are called directly, \
+no UI is needed.
 - Include a success_criteria for each sub-goal — what should be visible on \
 screen when this sub-goal is complete.
 - The last sub-goal should verify the final expected result.

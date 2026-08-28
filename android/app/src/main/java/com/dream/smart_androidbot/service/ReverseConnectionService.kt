@@ -167,11 +167,15 @@ class ReverseConnectionService : Service() {
                     isWsConnected = true
                     reconnectStartedAtMs = 0L    // reset give-up timer on success
                     updateNotification("Connected to ${uri.host}")
+                    // Register the sender so the a11y service can stream
+                    // real-record events back to the server.
+                    AgentAccessibilityService.wsSender = { json -> webSocketClient?.send(json) }
                 },
                 messageCallback = ::handleMessage,
                 closedCallback = { code, reason, _ ->
                     Log.w(TAG, "Disconnected code=$code reason=$reason")
                     isWsConnected = false
+                    AgentAccessibilityService.wsSender = null
                     logNetworkState("onClose")
                     if (isTerminalClose(reason)) {
                         Log.w(TAG, "Terminal error — not retrying")

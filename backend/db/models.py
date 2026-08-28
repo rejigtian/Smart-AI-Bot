@@ -10,6 +10,10 @@ def _uuid() -> str:
     return str(uuid.uuid4())
 
 
+QUICK_SUITE_FORMAT = "quick"
+QUICK_SUITE_PREFIX = "快速任务:"
+
+
 class Device(Base):
     __tablename__ = "devices"
 
@@ -31,6 +35,8 @@ class TestSuite(Base):
     # Target app package — used to match an optional Project Profile (external
     # KB / skills / source) so the agent gets project-specific context.
     app_package: Mapped[str] = mapped_column(String, default="")
+    # User-defined grouping tag (e.g. "登录", "支付", "回归") — empty = ungrouped.
+    tag: Mapped[str] = mapped_column(String, default="")
 
     cases: Mapped[list["TestCase"]] = relationship(back_populates="suite", cascade="all, delete-orphan")
     runs: Mapped[list["TestRun"]] = relationship(back_populates="suite", cascade="all, delete-orphan")
@@ -54,6 +60,11 @@ class TestCase(Base):
     # action while making real progress. Skips the L4 stuck-loop backstop and
     # relies on max_steps instead. See docs/agent-architecture.md.
     loop_task: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Deterministic replay: raw recorded actions (JSON list of
+    # {kind, x, y, text, direction, action, package, delay_ms}) captured at
+    # record time. When present, a run in "replay" mode executes these verbatim
+    # (coordinates + timing) without per-step AI decisions.
+    replay_steps: Mapped[str] = mapped_column(Text, default="")
 
     suite: Mapped["TestSuite"] = relationship(back_populates="cases")
 

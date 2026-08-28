@@ -19,6 +19,13 @@ export interface Suite {
   case_count: number
   created_at: string
   app_package?: string
+  tag?: string
+}
+
+export interface SuiteListPage {
+  total: number
+  items: Suite[]
+  tags: string[]
 }
 
 export interface Run {
@@ -133,7 +140,8 @@ export const fetchDeviceCapabilities = (id: string) =>
 
 // ── Suites ───────────────────────────────────────────────────────────────────
 
-export const fetchSuites = () => api.get<Suite[]>('/suites').then(r => r.data)
+export const fetchSuites = (params?: { q?: string; tag?: string; page?: number; page_size?: number }) =>
+  api.get<SuiteListPage>('/suites', { params }).then(r => r.data)
 export const fetchSuite = (id: string) => api.get<Suite>(`/suites/${id}`).then(r => r.data)
 export const uploadSuite = (file: File) => {
   const form = new FormData()
@@ -141,6 +149,8 @@ export const uploadSuite = (file: File) => {
   return api.post<Suite>('/suites', form).then(r => r.data)
 }
 export const deleteSuite = (id: string) => api.delete(`/suites/${id}`)
+export const importSuite = (data: any) =>
+  api.post<Suite>('/suites/import', data).then(r => r.data)
 
 export interface TrendPoint {
   run_id: string
@@ -172,6 +182,7 @@ export const startRun = (body: {
   max_steps?: number
   max_retries?: number
   isolated?: boolean
+  mode?: string
 }) => api.post<Run>('/runs', body).then(r => r.data)
 export const quickRun = (body: {
   goal: string
@@ -181,6 +192,7 @@ export const quickRun = (body: {
   model: string
   max_steps?: number
   app_package?: string
+  mode?: string
 }) => api.post<Run>('/runs/quick', body).then(r => r.data)
 export const cancelRun = (id: string) => api.post(`/runs/${id}/cancel`)
 export const deleteRun = (id: string) => api.delete(`/runs/${id}`)
@@ -364,6 +376,9 @@ export const deleteProject = (id: string) => api.delete(`/projects/${id}`)
 
 export const setSuiteAppPackage = (suiteId: string, app_package: string) =>
   api.patch<Suite>(`/suites/${suiteId}`, { app_package }).then(r => r.data)
+
+export const setSuiteTag = (suiteId: string, tag: string) =>
+  api.patch<Suite>(`/suites/${suiteId}`, { tag }).then(r => r.data)
 
 // ── Self knowledge base (dictated notes, LLM-organized) ──────────────────────
 

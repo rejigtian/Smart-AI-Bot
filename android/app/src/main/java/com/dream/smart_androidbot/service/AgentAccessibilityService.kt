@@ -5,6 +5,8 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import com.dream.smart_androidbot.keepalive.KeepAliveController
 import com.dream.smart_androidbot.keepalive.KeepAliveRecoveryActivity
 import android.graphics.Bitmap
@@ -43,6 +45,21 @@ class AgentAccessibilityService : AccessibilityService() {
         private var instance: AgentAccessibilityService? = null
 
         fun getInstance(): AgentAccessibilityService? = instance
+
+        // ── Real-recording state ────────────────────────────────────────────
+        // When true, the service captures real user interactions (tap/scroll/
+        // touch coordinates) and pushes them to the backend over the portal WS.
+        @Volatile
+        var recording: Boolean = false
+
+        // Set by ReverseConnectionService on connect; sends a raw JSON string
+        // (a "record_event" push) to the backend.
+        @Volatile
+        var wsSender: ((String) -> Unit)? = null
+
+        fun pushRecordEvent(json: String) {
+            if (recording) wsSender?.invoke(json)
+        }
     }
 
     // Reason the last screenshot attempt(s) failed (errorCode=N / timeout-12s /
@@ -80,10 +97,12 @@ class AgentAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         val info = serviceInfo ?: AccessibilityServiceInfo()
+        // NOTE: no FLAG_REQUEST_TOUCH_EXPLORATION_MODE — it turns taps into
+        // "explore then select" (double-tap to click), which swallows rapid
+        // consecutive taps. We don't use touch-interaction coordinates anyway.
         info.flags = info.flags or
                 AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE
+                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         info.notificationTimeout = 0
         serviceInfo = info
         // Re-establish keep-alive whenever a11y reconnects (e.g. after a kill).
@@ -115,7 +134,78 @@ class AgentAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (!recording || event == null) return
+        val evt = when (event.eventType) {
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> captureTap(event)
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> captureScroll(event)
+            AccessibilityEvent.TYPE_TOUCH_INTERACTION_START -> captureTouch()
+            else -> null
+        }
+        if (evt == null || evt.length() == 0) return
+        val push = JSONObject()
+            .put("type", "record_event")
+            .put("event", evt)
+            .toString()
+        pushRecordEvent(push)
+    }
+
+    // ── Real-recording capture ────────────────────────────────────────────────
+
+    private fun captureTap(event: AccessibilityEvent): JSONObject {
+        val node = event.source
+        if (node != null) {
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+            val json = JSONObject()
+                .put("kind", "tap")
+                .put("text", node.text?.toString() ?: "")
+                .put("contentDescription", node.contentDescription?.toString() ?: "")
+                .put("resourceId", node.viewIdResourceName ?: "")
+                .put("className", node.className?.toString() ?: "")
+                .put("x", bounds.centerX())
+                .put("y", bounds.centerY())
+            node.recycle()
+            return json
+        }
+        // Fallback: the source node is already recycled (e.g. a dialog button that
+        // dismisses its dialog on click). Record the class name — no coordinates —
+        // so replay can degrade to element matching.
+        val cls = event.className?.toString() ?: ""
+        if (cls.isEmpty()) return JSONObject()
+        return JSONObject().put("kind", "tap").put("className", cls)
+    }
+
+    private fun captureScroll(event: AccessibilityEvent): JSONObject {
+        // Filter out spurious scrolls: auto-scrolling carousels, list loads, and
+        // animations fire TYPE_VIEW_SCROLLED with a zero (or tiny) delta. Only
+        // record a scroll that actually moved.
+        var dx = 0
+        var dy = 0
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            dx = event.scrollDeltaX
+            dy = event.scrollDeltaY
+        }
+        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return JSONObject()  // no real movement
+
+        val json = JSONObject().put("kind", "scroll")
+        // Positive deltaY = content moved down (finger swiped up) → "down".
+        val direction = when {
+            Math.abs(dx) > Math.abs(dy) && dx > 0 -> "right"
+            Math.abs(dx) > Math.abs(dy) && dx < 0 -> "left"
+            dy < 0 -> "up"
+            else -> "down"
+        }
+        json.put("direction", direction)
+        val node = event.source
+        if (node != null) {
+            json.put("className", node.className?.toString() ?: "")
+            node.recycle()
+        }
+        return json
+    }
+
+    private fun captureTouch(): JSONObject = JSONObject()
 
     override fun onDestroy() {
         super.onDestroy()
@@ -259,6 +349,131 @@ class AgentAccessibilityService : AccessibilityService() {
         val result = AccessibilityTreeBuilder.buildFullAccessibilityTreeJson(root, screen)
         root.recycle()
         return result
+    }
+
+    private data class SettingsActionTarget(
+        val bounds: Rect,
+        val enabled: Boolean,
+    )
+
+    /**
+     * Perform a real Android force-stop through the target app's system details page.
+     *
+     * A regular third-party app cannot call ActivityManager.forceStopPackage().
+     * Removing a recent-task card or calling killBackgroundProcesses() is not
+     * equivalent, so we deliberately drive Settings and only report success after
+     * the force-stop button is disabled or its confirmation dialog is accepted.
+     */
+    suspend fun forceStopAppViaSettings(packageName: String): Pair<Boolean, String> {
+        val detailsIntent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:$packageName"),
+        ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+
+        return try {
+            BackgroundLaunchBridge.withLaunchWindow(this) { startActivity(detailsIntent) }
+
+            var forceStopTarget: SettingsActionTarget? = null
+            for (attempt in 0 until 24) {
+                delay(250)
+                val root = rootInActiveWindow ?: continue
+                forceStopTarget = findSettingsAction(root, ::isForceStopControl)
+                root.recycle()
+                if (forceStopTarget != null) break
+            }
+
+            val target = forceStopTarget
+                ?: return Pair(false, "force-stop control was not found in system Settings")
+            if (!target.enabled) {
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                return Pair(true, "already stopped")
+            }
+            if (!tapSettingsTarget(target)) {
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                return Pair(false, "could not tap the force-stop control")
+            }
+
+            var confirmationTapped = false
+            var becameDisabled = false
+            for (attempt in 0 until 24) {
+                delay(250)
+                val root = rootInActiveWindow ?: continue
+                val confirmTarget = findSettingsAction(root, ::isForceStopConfirmation)
+                val currentForceStop = findSettingsAction(root, ::isForceStopControl)
+                root.recycle()
+                if (currentForceStop != null && !currentForceStop.enabled) {
+                    becameDisabled = true
+                    break
+                }
+                if (confirmTarget != null && confirmTarget.enabled) {
+                    // A dispatched gesture is not proof that Settings accepted it.
+                    // Retry sparingly while the dialog remains, then keep polling
+                    // until the actual force-stop control becomes disabled.
+                    if (!confirmationTapped || attempt % 4 == 0) {
+                        confirmationTapped = tapSettingsTarget(confirmTarget) || confirmationTapped
+                    }
+                }
+            }
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            if (becameDisabled) {
+                Pair(true, "verified stopped in system Settings")
+            } else if (!confirmationTapped) {
+                Pair(false, "force-stop confirmation was not found or could not be tapped")
+            } else {
+                Pair(false, "force-stop control did not become disabled after confirmation")
+            }
+        } catch (error: Exception) {
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            Pair(false, error.message ?: error.javaClass.simpleName)
+        }
+    }
+
+    private suspend fun tapSettingsTarget(target: SettingsActionTarget): Boolean {
+        if (target.bounds.isEmpty) return false
+        return GestureController.tap(
+            target.bounds.centerX().coerceAtLeast(1),
+            target.bounds.centerY().coerceAtLeast(1),
+        )
+    }
+
+    private fun findSettingsAction(
+        node: AccessibilityNodeInfo,
+        matcher: (String, String, String) -> Boolean,
+    ): SettingsActionTarget? {
+        val text = node.text?.toString().orEmpty().trim()
+        val description = node.contentDescription?.toString().orEmpty().trim()
+        val resourceId = node.viewIdResourceName.orEmpty()
+        if (matcher(text, description, resourceId)) {
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+            return SettingsActionTarget(bounds, node.isEnabled)
+        }
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            val result = findSettingsAction(child, matcher)
+            child.recycle()
+            if (result != null) return result
+        }
+        return null
+    }
+
+    private fun isForceStopControl(text: String, description: String, resourceId: String): Boolean {
+        val labels = setOf(
+            "强行停止", "强制停止", "强制结束", "停止运行", "结束运行", "強制停止",
+            "force stop", "강제 종료",
+        )
+        return labels.contains(text.lowercase()) ||
+            labels.contains(description.lowercase()) ||
+            resourceId.lowercase().contains("force_stop")
+    }
+
+    private fun isForceStopConfirmation(text: String, description: String, resourceId: String): Boolean {
+        val labels = setOf(
+            "确定", "确认", "確定", "ok", "强行停止", "强制停止",
+            "强制结束", "停止运行", "结束运行", "強制停止", "force stop", "강제 종료",
+        )
+        val value = if (text.isNotBlank()) text.lowercase() else description.lowercase()
+        return labels.contains(value) || resourceId.lowercase().endsWith(":id/button1")
     }
 
     // ── Screenshot ────────────────────────────────────────────────────────────

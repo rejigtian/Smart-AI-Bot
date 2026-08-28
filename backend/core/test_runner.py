@@ -28,6 +28,7 @@ from core.run_recorder import RunRecorder
 from core.step_tree import NodeRow, RunTarget, backtrack_plan, chain_to_node, dfs_run_targets, flatten_chain, resolve_links
 from core.test_agent import CaseResult, TestCaseAgent
 from core.test_parser import Step, TestCaseData
+from agent.verifier import LLMVerifier
 from db.database import AsyncSessionLocal
 from db.models import StepNode, TestCase, TestResult, TestRun, TestStepLog
 from ws.portal_ws import connected_devices
@@ -95,26 +96,23 @@ async def _suite_app_package(suite_id: str) -> str:
 
 
 async def _force_stop_app_after_run(device, package: str, emit) -> None:
-    """Force-stop the app under test once a run finishes, so the next run starts
-    from a clean cold state instead of leaving the app on whatever screen the
-    last case ended on (or relying on the agent to navigate back to home).
+    """Force-stop the tested app once a run finishes, without blind gestures.
 
-    Best-effort: no-op when the suite has no configured app_package, and a
-    failure here never affects the run's result. Uses the Portal's `app/stop`
-    (am force-stop) via WebSocketDevice.stop_app."""
-    if not package:
-        return
+    The configured suite package wins: a permission dialog or external handoff
+    must not make cleanup stop a system package instead of the app under test.
+    Best-effort cleanup never changes the already-computed run result.
+    """
     try:
-        # The Portal's app/stop uses ActivityManager.killBackgroundProcesses,
-        # which only evicts BACKGROUND processes — but the app under test is
-        # still in the FOREGROUND when the run ends, so the kill would no-op.
-        # Press Home first to background it, give the system a beat, then kill.
-        await device.global_action("home")
-        await asyncio.sleep(0.8)
-        await device.stop_app(package)
-        await emit(f"🛑 Force-stopped {package}")
+        current_package = await device.current_package()
+        target_package = package or current_package
+        if not target_package:
+            await emit("(could not force-stop app: target package is unknown)")
+            return
+        result = await device.stop_app(target_package)
+        await emit(f"🛑 {result}")
     except Exception as exc:
-        await emit(f"(could not force-stop {package}: {exc})")
+        label = package or "current app"
+        await emit(f"(could not force-stop {label}: {exc})")
 
 
 async def _project_kb_roots(suite_id: str) -> list:
@@ -149,12 +147,18 @@ async def _project_kb_search_cmd(suite_id: str) -> str:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-async def start_run(run_id: str, max_steps: int = 20, step_delay: float = 1.0, max_retries: int = 0) -> None:
-    """Register a RunState and launch execute_run as a background task."""
+async def start_run(run_id: str, max_steps: int = 20, step_delay: float = 1.0,
+                    max_retries: int = 0, mode: str = "ai") -> None:
+    """Register a RunState and launch the run as a background task.
+
+    mode: "ai" (default, LLM drives each step) or "replay" (deterministic
+    playback of recorded actions, single AI verification at the end).
+    """
     state = RunState()
     active_runs[run_id] = state
+    executor = execute_replay_run if mode == "replay" else execute_run
     task = asyncio.create_task(
-        execute_run(run_id, state, max_steps=max_steps, step_delay=step_delay, max_retries=max_retries)
+        executor(run_id, state, max_steps=max_steps, step_delay=step_delay, max_retries=max_retries)
     )
     state.task = task
 
@@ -614,6 +618,197 @@ async def run_log_stream(run_id: str) -> AsyncGenerator[str, None]:
 
 
 # ── Background task ───────────────────────────────────────────────────────────
+
+async def _replay_step(device: WebSocketDevice, step: dict, emit) -> str:
+    """Execute one recorded step verbatim. Returns a short description."""
+    kind = step.get("kind")
+    if kind == "tap":
+        # Prefer element matching (id > text > class) so a minor UI shift doesn't
+        # break the run; fall back to recorded coordinates last.
+        if step.get("resourceId"):
+            try:
+                return await device.tap_element_by_id(step["resourceId"])
+            except Exception:
+                pass
+        if step.get("text"):
+            try:
+                return await device.tap_element_by_text(step["text"])
+            except Exception:
+                pass
+        if step.get("className"):
+            try:
+                return await device.tap_element_by_class(step["className"])
+            except Exception:
+                pass
+        if step.get("x") is not None and step.get("y") is not None:
+            await device.tap(step["x"], step["y"])
+            return f"tap ({step['x']},{step['y']})"
+        return "tap (no target)"
+    if kind == "tap_element":
+        await device.tap_element(step.get("index", 0))
+        return f"tap_element[{step.get('index')}]"
+    if kind == "scroll":
+        # Older Portal builds may not record a direction (TYPE_VIEW_SCROLLED
+        # doesn't expose it directly). Fall back to "down" rather than crash.
+        direction = step.get("direction") or "down"
+        await device.scroll(direction)
+        return f"scroll {direction}"
+    if kind == "swipe":
+        await device.swipe(step.get("x1"), step.get("y1"), step.get("x2"), step.get("y2"),
+                           step.get("duration_ms", 500))
+        return "swipe"
+    if kind == "input_text":
+        await device.input_text(step.get("text", ""), step.get("clear", False))
+        return f"input {str(step.get('text',''))[:20]}"
+    if kind == "global_action":
+        await device.global_action(step.get("action", ""))
+        return f"global {step.get('action')}"
+    if kind == "press_key":
+        await device.press_key(step.get("key", ""))
+        return f"key {step.get('key')}"
+    if kind == "start_app":
+        await device.start_app(step.get("package", ""))
+        return f"start {step.get('package')}"
+    return f"unknown {kind}"
+
+
+async def execute_replay_run(
+    run_id: str,
+    state: RunState,
+    max_steps: int = 20,
+    step_delay: float = 1.0,
+    max_retries: int = 0,
+) -> None:
+    """Deterministic replay: execute recorded actions verbatim (coordinates +
+    timing) with NO per-step AI decisions, then verify ONCE at the end."""
+    async def emit(msg: str) -> None:
+        logger.info("[replay:%s] %s", run_id, msg)
+        await state.emit(msg)
+
+    recorder = RunRecorder(run_id)
+    try:
+        async with AsyncSessionLocal() as session:
+            run_row = await session.get(TestRun, run_id)
+            if not run_row:
+                await emit(f"ERROR: run {run_id} not found")
+                return
+            device_id = run_row.device_id
+            provider = run_row.provider
+            model = run_row.model
+            cases = (await session.execute(
+                select(TestCase).where(TestCase.suite_id == run_row.suite_id).order_by(TestCase.order)
+            )).scalars().all()
+            result_rows = {r.case_id: r for r in (await session.execute(
+                select(TestResult).where(TestResult.run_id == run_id)
+            )).scalars().all()}
+
+        conn = connected_devices.get(device_id)
+        if conn is None or not conn.is_connected:
+            async with AsyncSessionLocal() as session:
+                await session.execute(update(TestRun).where(TestRun.id == run_id)
+                                     .values(status="error", finished_at=datetime.utcnow()))
+                await session.commit()
+            await emit(f"ERROR: Device {device_id} is not connected")
+            return
+
+        device = WebSocketDevice(device_id)
+        _apply_aws_env()
+        api_key = _load_api_key(provider)
+        api_base = _load_api_base(provider)
+        v_provider, v_model, v_key, v_base = _load_verifier_settings()
+        fallbacks = _load_fallback_chain(provider, model)
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(update(TestRun).where(TestRun.id == run_id).values(status="running"))
+            await session.commit()
+
+        await emit(f"Replay run: {len(cases)} case(s) · device={device_id} · deterministic (no per-step AI)")
+        if await recorder.start():
+            await emit("Screen recording started (ADB)")
+
+        verifier = LLMVerifier(v_provider, v_model, v_key, v_base, fallbacks=fallbacks)
+
+        passed = failed = errored = skipped = 0
+        for case in cases:
+            result_row = result_rows.get(case.id)
+            if result_row:
+                async with AsyncSessionLocal() as session:
+                    await session.execute(update(TestResult).where(TestResult.id == result_row.id)
+                                         .values(status="running", started_at=datetime.utcnow()))
+                    await session.commit()
+
+            await emit(f"\n[{case.path[:60]}]")
+            try:
+                replay = json.loads(case.replay_steps or "[]")
+                if not replay:
+                    case_result = CaseResult(
+                        status="error", steps=0,
+                        reason="No replay steps recorded — record first, or run in AI mode",
+                    )
+                else:
+                    action_history: list = []
+                    for i, step in enumerate(replay):
+                        delay_ms = int(step.get("delay_ms", 0))
+                        if delay_ms > 0:
+                            await asyncio.sleep(delay_ms / 1000)
+                        desc = await _replay_step(device, step, emit)
+                        action_history.append(f"Step {i + 1}: {desc}")
+                        await emit(f"  [{i + 1}/{len(replay)}] {desc}")
+
+                    await emit("  Verifying expected result (single AI check)…")
+                    confirmed, reason, shot, _gap = await verifier.verify(
+                        device, case.expected, log=emit,
+                        action_history=action_history, agent_reason="replay",
+                    )
+                    status = "pass" if confirmed else "fail"
+                    case_result = CaseResult(
+                        status=status, reason=reason, steps=len(replay), screenshot_b64=shot,
+                    )
+            except asyncio.CancelledError:
+                if result_row:
+                    async with AsyncSessionLocal() as session:
+                        await session.execute(update(TestResult).where(TestResult.id == result_row.id)
+                                             .values(status="error", reason="Run cancelled", finished_at=datetime.utcnow()))
+                        await session.commit()
+                raise
+            except Exception as e:
+                case_result = CaseResult(status="error", reason=str(e), steps=0)
+
+            if result_row:
+                async with AsyncSessionLocal() as session:
+                    await session.execute(update(TestResult).where(TestResult.id == result_row.id).values(
+                        status=case_result.status, reason=case_result.reason, steps=case_result.steps,
+                        screenshot_b64=case_result.screenshot_b64, finished_at=datetime.utcnow(),
+                    ))
+                    await session.commit()
+
+            if case_result.status == "pass":
+                passed += 1
+            elif case_result.status == "fail":
+                failed += 1
+            elif case_result.status == "error":
+                errored += 1
+            else:
+                skipped += 1
+            await emit(f"  → {case_result.status}")
+
+        async with AsyncSessionLocal() as session:
+            await session.execute(update(TestRun).where(TestRun.id == run_id)
+                                 .values(status="done", finished_at=datetime.utcnow()))
+            await session.commit()
+        await emit(f"\nReplay complete: {passed} passed, {failed} failed, {errored} error(s), {skipped} skipped")
+
+    except asyncio.CancelledError:
+        await emit("⛔ Replay cancelled")
+        async with AsyncSessionLocal() as session:
+            await session.execute(update(TestRun).where(TestRun.id == run_id)
+                                 .values(status="cancelled", finished_at=datetime.utcnow()))
+            await session.commit()
+    finally:
+        await recorder.stop()
+        await state.finish()
+        active_runs.pop(run_id, None)
+
 
 async def execute_run(
     run_id: str,

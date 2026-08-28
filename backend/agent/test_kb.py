@@ -138,12 +138,14 @@ def _score_match(query: str, entry: dict) -> int:
             query_tokens.add(w)
 
     score = 0
-    # Exact keyword match is strong signal
+    # Keyword match: exact token match is the strong signal. A substring match
+    # on a long keyword is weaker. Short keywords (len<3, e.g. "入口") are NOT
+    # substring-matched — otherwise "设置页面入口" may hit an unrelated "活动入口" note.
     for kw in entry["keywords"]:
-        if kw in query_lower:
-            score += 10
         if kw in query_tokens:
-            score += 5
+            score += 10
+        elif len(kw) >= 3 and kw in query_lower:
+            score += 4
 
     # Title word match is also strong
     title_lower = entry["title"].lower()
@@ -186,8 +188,12 @@ def search_feature(query: str, extra_roots: Optional[list[str]] = None,
         except Exception:
             continue
 
-    candidates = feature_entries + _index_notes()
-    ranked = sorted(((_score_match(query, e), e) for e in candidates), key=lambda x: -x[0])
+    # 笔记（口述/LLM 组织，质量参差）与功能文档分开计分：笔记得分打 6 折，
+    # 避免零散的随手笔记抢占正式功能文档的位置。
+    candidates = [(_score_match(query, e), e) for e in feature_entries]
+    for e in _index_notes():
+        candidates.append((int(_score_match(query, e) * 0.6), e))
+    ranked = sorted(candidates, key=lambda x: -x[0])
     ranked = [(s, e) for s, e in ranked if s >= 10]
     if not ranked:
         return ""

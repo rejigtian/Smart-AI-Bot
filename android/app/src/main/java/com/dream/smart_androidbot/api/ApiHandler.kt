@@ -107,13 +107,27 @@ class ApiHandler(private val context: android.content.Context) {
         else "Launched $packageName (warning: overlay permission not granted — " +
              "launch may be blocked while the Portal app is in the background)"
 
-    fun stopApp(packageName: String): ApiResponse {
+    suspend fun stopApp(packageName: String): ApiResponse {
+        if (packageName.isBlank()) {
+            return ApiResponse.Error("Force-stop failed: package is empty")
+        }
+        if (packageName == context.packageName) {
+            return ApiResponse.Error("Refusing to force-stop the Portal app itself")
+        }
         return try {
+            val service = AgentAccessibilityService.getInstance()
+                ?: return ApiResponse.Error("Force-stop failed: accessibility service is unavailable")
+            val (stopped, detail) = service.forceStopAppViaSettings(packageName)
+            if (!stopped) {
+                return ApiResponse.Error("Force-stop failed for $packageName: $detail")
+            }
+            // This is only a secondary cleanup. The Settings confirmation above
+            // is what gives force-stop semantics; killBackgroundProcesses alone does not.
             val am = context.getSystemService(android.app.ActivityManager::class.java)
             am?.killBackgroundProcesses(packageName)
-            ApiResponse.Success("Stopped $packageName")
+            ApiResponse.Success("Force-stopped $packageName ($detail)")
         } catch (e: Exception) {
-            ApiResponse.Error("Stop failed: ${e.message}")
+            ApiResponse.Error("Force-stop failed: ${e.message}")
         }
     }
 

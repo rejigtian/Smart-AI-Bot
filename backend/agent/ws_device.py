@@ -284,6 +284,46 @@ class WebSocketDevice:
         await self._rpc("tap", {"x": cx, "y": cy})
         return f"Tapped element {index} ('{el['text']}') at ({cx}, {cy})"
 
+    async def _tap_first_match(self, key: str, value: str) -> Optional[str]:
+        """Tap the first visible element whose `key` field contains `value`.
+
+        Returns a description, or None if no element matched. Used by replay to
+        re-locate elements by id/text/class instead of stale coordinates, so a
+        minor UI shift doesn't break the run.
+        """
+        await self.get_ui_state()  # refresh the cached element list
+        matches = [e for e in self._elements if value in (e.get(key) or "")]
+        if not matches and key == "className":
+            # Fall back to the simple class name (last segment) on full-name mismatch.
+            short = value.rsplit(".", 1)[-1]
+            matches = [e for e in self._elements if short in (e.get("className") or "")]
+        if not matches:
+            return None
+        el = matches[0]
+        cx, cy = el["cx"], el["cy"]
+        if cx == 0 and cy == 0:
+            return None
+        await self._rpc("tap", {"x": cx, "y": cy})
+        return f"Tapped '{el.get('text','')}' ({key}={value}) at ({cx}, {cy})"
+
+    async def tap_element_by_id(self, resource_id: str) -> str:
+        r = await self._tap_first_match("resourceId", resource_id)
+        if r is None:
+            raise ValueError(f"No visible element matches resourceId '{resource_id}'")
+        return r
+
+    async def tap_element_by_text(self, text: str) -> str:
+        r = await self._tap_first_match("text", text)
+        if r is None:
+            raise ValueError(f"No visible element matches text '{text}'")
+        return r
+
+    async def tap_element_by_class(self, class_name: str) -> str:
+        r = await self._tap_first_match("className", class_name)
+        if r is None:
+            raise ValueError(f"No visible element matches class '{class_name}'")
+        return r
+
     async def start_app(self, package: str, activity: str = "") -> str:
         result = await self._rpc("app", {"package": package, "activity": activity,
                                          "stopBeforeLaunch": False})
@@ -300,8 +340,20 @@ class WebSocketDevice:
         )
 
     async def stop_app(self, package: str) -> str:
-        await self._rpc("app/stop", {"package": package})
-        return f"Stopped {package}"
+        result = await self._rpc("app/stop", {"package": package}, timeout=45.0)
+        # Device-side cleanup must be observable. A successful RPC alone is not
+        # enough if the target remains the foreground application.
+        await asyncio.sleep(0.5)
+        foreground = await self.current_package()
+        if foreground == package:
+            raise RuntimeError(f"force-stop was not effective; {package} is still foreground")
+        return result if isinstance(result, str) else f"Force-stopped {package}"
+
+    async def current_package(self) -> str:
+        raw = await self._rpc("state", {"filter": True}, timeout=30.0) or {}
+        phone = raw.get("phone_state", {}) if isinstance(raw, dict) else {}
+        package = phone.get("packageName", "")
+        return package if isinstance(package, str) else ""
 
     async def list_packages(self) -> List[str]:
         result = await self._rpc("packages", {})

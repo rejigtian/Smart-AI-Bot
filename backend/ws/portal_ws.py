@@ -148,6 +148,17 @@ def _handle_message(conn: DeviceConnection, raw: str):
     except json.JSONDecodeError:
         return
 
+    # Record-event push from the Portal (NOT a JSON-RPC response — no "id").
+    # The app streams real user interactions (tap/scroll/input + coordinates)
+    # while the recorder is active; route them to the recorder session.
+    if msg.get("type") == "record_event":
+        try:
+            from routers.recorder import handle_record_event
+            handle_record_event(conn.device_id, msg.get("event") or {})
+        except Exception as e:
+            logger.warning("record_event handler failed: %s", e)
+        return
+
     msg_id = str(msg.get("id", ""))
     if not msg_id:
         return

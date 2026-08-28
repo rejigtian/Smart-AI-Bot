@@ -57,6 +57,7 @@ async def init_db():
             "checkpoints": "TEXT DEFAULT ''",
             "loop_task": "BOOLEAN DEFAULT 0",
         })
+        await _ensure_columns("test_cases", {"replay_steps": "TEXT DEFAULT ''"})
 
         await _ensure_columns("step_nodes", {
             "source_id": "VARCHAR",
@@ -65,6 +66,7 @@ async def init_db():
 
         await _ensure_columns("test_suites", {
             "app_package": "VARCHAR DEFAULT ''",
+            "tag": "VARCHAR DEFAULT ''",
         })
 
         # suite_id + task_keyword were added to LessonLearned after the table

@@ -81,7 +81,8 @@ export default function Library() {
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
 
-  const { data: suites = [] } = useQuery({ queryKey: ['suites'], queryFn: fetchSuites })
+  const { data: suitesPage } = useQuery({ queryKey: ['suites'], queryFn: () => fetchSuites() })
+  const suites = suitesPage?.items ?? []
   const { data, isFetching } = useQuery({
     queryKey: ['nodes-all', q, suiteId, showDerived, page],
     queryFn: () => fetchAllNodes({ q: q.trim(), suite_id: suiteId, include_derived: showDerived, offset: page * PAGE, limit: PAGE }),

@@ -5,13 +5,23 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import and_, delete, func, not_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.step_tree import ChainItem, NodeRow, chain_to_node, clone_chain
 from core.test_parser import parse_file
 from db.database import AsyncSessionLocal
-from db.models import LessonLearned, StepNode, TestCase, TestResult, TestRun, TestStepLog, TestSuite
+from db.models import (
+    QUICK_SUITE_FORMAT,
+    QUICK_SUITE_PREFIX,
+    LessonLearned,
+    StepNode,
+    TestCase,
+    TestResult,
+    TestRun,
+    TestStepLog,
+    TestSuite,
+)
 
 router = APIRouter(prefix="/api/suites", tags=["suites"])
 
@@ -28,6 +38,13 @@ class SuiteOut(BaseModel):
     case_count: int
     created_at: str
     app_package: str = ""
+    tag: str = ""
+
+
+class SuiteListPage(BaseModel):
+    total: int
+    items: List[SuiteOut]
+    tags: List[str]  # distinct tags in use (for the grouping sidebar)
 
 
 class CaseOut(BaseModel):
@@ -99,10 +116,45 @@ class CopyIn(BaseModel):
     link: bool = False   # True = live link (one ref node); False = snapshot copy
 
 
-@router.get("", response_model=List[SuiteOut])
-async def list_suites(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(TestSuite).order_by(TestSuite.created_at.desc()))
+def visible_suite_clause():
+    """Exclude internal quick-run containers from the suite library.
+
+    New quick tasks use a dedicated source format. The name check also hides
+    containers created by older releases while preserving imported files whose
+    names happen to start with the same text.
+    """
+    return not_(or_(
+        TestSuite.source_format == QUICK_SUITE_FORMAT,
+        and_(
+            TestSuite.source_format == "manual",
+            TestSuite.name.startswith(QUICK_SUITE_PREFIX),
+        ),
+    ))
+
+
+@router.get("", response_model=SuiteListPage)
+async def list_suites(
+    q: str = "",
+    tag: str = "",
+    page: int = 1,
+    page_size: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """List suites with optional name search (q), tag filter, and pagination."""
+    stmt = select(TestSuite).where(visible_suite_clause())
+    if q:
+        stmt = stmt.where(TestSuite.name.ilike(f"%{q}%"))
+    if tag:
+        stmt = stmt.where(TestSuite.tag == tag)
+
+    total = len((await db.execute(stmt)).scalars().all())
+
+    offset = (page - 1) * page_size
+    result = await db.execute(
+        stmt.order_by(TestSuite.created_at.desc()).offset(offset).limit(page_size)
+    )
     suites = result.scalars().all()
+
     out = []
     for s in suites:
         count_res = await db.execute(
@@ -116,8 +168,17 @@ async def list_suites(db: AsyncSession = Depends(get_db)):
             case_count=count,
             created_at=s.created_at.isoformat(),
             app_package=s.app_package or "",
+            tag=s.tag or "",
         ))
-    return out
+
+    # Distinct tags in use (for the grouping sidebar).
+    tags_stmt = select(TestSuite.tag).where(
+        TestSuite.tag != "",
+        visible_suite_clause(),
+    )
+    tags = sorted({t for (t,) in (await db.execute(tags_stmt.distinct())).all()})
+
+    return SuiteListPage(total=total, items=out, tags=tags)
 
 
 @router.post("", response_model=SuiteOut, status_code=201)
@@ -167,20 +228,25 @@ async def upload_suite(
         case_count=len(cases),
         created_at=suite.created_at.isoformat(),
         app_package=suite.app_package or "",
+        tag=suite.tag or "",
     )
 
 
 class SuitePatch(BaseModel):
-    app_package: str = ""
+    app_package: Optional[str] = None
+    tag: Optional[str] = None
 
 
 @router.patch("/{suite_id}", response_model=SuiteOut)
 async def update_suite(suite_id: str, body: SuitePatch, db: AsyncSession = Depends(get_db)):
-    """Set the suite's target app package (used to match a Project Profile)."""
+    """Set the suite's target app package / grouping tag. Omitted fields are left unchanged."""
     suite = await db.get(TestSuite, suite_id)
     if not suite:
         raise HTTPException(status_code=404, detail="Suite not found")
-    suite.app_package = (body.app_package or "").strip()
+    if body.app_package is not None:
+        suite.app_package = body.app_package.strip()
+    if body.tag is not None:
+        suite.tag = body.tag.strip()
     await db.commit()
     await db.refresh(suite)
     count = len((await db.execute(
@@ -189,7 +255,7 @@ async def update_suite(suite_id: str, body: SuitePatch, db: AsyncSession = Depen
     return SuiteOut(
         id=suite.id, name=suite.name, source_format=suite.source_format,
         case_count=count, created_at=suite.created_at.isoformat(),
-        app_package=suite.app_package or "",
+        app_package=suite.app_package or "", tag=suite.tag or "",
     )
 
 
@@ -209,6 +275,7 @@ async def get_suite(suite_id: str, db: AsyncSession = Depends(get_db)):
         case_count=count,
         created_at=suite.created_at.isoformat(),
         app_package=suite.app_package or "",
+        tag=suite.tag or "",
     )
 
 
@@ -233,11 +300,154 @@ async def list_cases(suite_id: str, db: AsyncSession = Depends(get_db)):
     ]
 
 
+@router.get("/{suite_id}/export")
+async def export_suite(suite_id: str, db: AsyncSession = Depends(get_db)):
+    """导出测试套件为 JSON 文件（suite + cases + step-tree）。"""
+    from fastapi.responses import Response
+
+    suite = await db.get(TestSuite, suite_id)
+    if not suite:
+        raise HTTPException(status_code=404, detail="Suite not found")
+
+    cases = (await db.execute(
+        select(TestCase).where(TestCase.suite_id == suite_id).order_by(TestCase.order)
+    )).scalars().all()
+    nodes = (await db.execute(
+        select(StepNode).where(StepNode.suite_id == suite_id).order_by(StepNode.order)
+    )).scalars().all()
+
+    payload = {
+        "version": 1,
+        "name": suite.name,
+        "source_format": suite.source_format,
+        "app_package": suite.app_package or "",
+        "tag": suite.tag or "",
+        "cases": [
+            {
+                "path": c.path, "expected": c.expected, "order": c.order,
+                "parameters": c.parameters or "", "checkpoints": c.checkpoints or "",
+                "loop_task": c.loop_task, "replay_steps": c.replay_steps or "",
+            }
+            for c in cases
+        ],
+        "nodes": [
+            {
+                "id": n.id, "parent_id": n.parent_id,
+                "action": n.action, "expected": n.expected, "order": n.order,
+                "reversible": n.reversible, "loop_task": n.loop_task,
+                "parameters": n.parameters or "", "source_id": n.source_id, "ref_id": n.ref_id,
+            }
+            for n in nodes
+        ],
+    }
+    content = json.dumps(payload, ensure_ascii=False, indent=2)
+    # 文件名用 ASCII（中文名会触发 latin-1 编码错误），内容仍是完整 JSON
+    filename = f"suite_{suite_id[:8]}.json"
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+class ImportSuiteBody(BaseModel):
+    name: str
+    source_format: str = "markdown"
+    app_package: str = ""
+    tag: str = ""
+    cases: List[dict] = []
+    nodes: List[dict] = []
+
+
+@router.post("/import", response_model=SuiteOut, status_code=201)
+async def import_suite(body: ImportSuiteBody, db: AsyncSession = Depends(get_db)):
+    """从 JSON 导入测试套件（suite + cases + step-tree）。"""
+    suite = TestSuite(
+        name=body.name,
+        source_format=body.source_format,
+        app_package=body.app_package,
+        tag=body.tag,
+    )
+    db.add(suite)
+    await db.flush()
+
+    for c in body.cases:
+        db.add(TestCase(
+            suite_id=suite.id,
+            path=c.get("path", ""),
+            expected=c.get("expected", ""),
+            order=int(c.get("order", 0) or 0),
+            parameters=c.get("parameters", ""),
+            checkpoints=c.get("checkpoints", ""),
+            loop_task=bool(c.get("loop_task", False)),
+            replay_steps=c.get("replay_steps", ""),
+        ))
+
+    # nodes：先全部创建（记录旧 id → 新 id），再回填 parent_id / ref_id
+    id_map: dict = {}
+    node_objs: list = []
+    for n in body.nodes:
+        node = StepNode(
+            suite_id=suite.id,
+            action=n.get("action", ""),
+            expected=n.get("expected", ""),
+            order=int(n.get("order", 0) or 0),
+            reversible=bool(n.get("reversible", True)),
+            loop_task=bool(n.get("loop_task", False)),
+            parameters=n.get("parameters", ""),
+        )
+        db.add(node)
+        await db.flush()
+        if n.get("id"):
+            id_map[n["id"]] = node.id
+        node_objs.append((n, node))
+
+    for n, node in node_objs:
+        old_parent = n.get("parent_id")
+        if old_parent and old_parent in id_map:
+            node.parent_id = id_map[old_parent]
+        old_ref = n.get("ref_id")
+        if old_ref and old_ref in id_map:
+            node.ref_id = id_map[old_ref]
+
+    await db.commit()
+
+    return SuiteOut(
+        id=suite.id, name=suite.name, source_format=suite.source_format,
+        case_count=len(body.cases), created_at=suite.created_at.isoformat(),
+        app_package=suite.app_package or "", tag=suite.tag or "",
+    )
+
+
 @router.delete("/{suite_id}", status_code=204)
 async def delete_suite(suite_id: str, db: AsyncSession = Depends(get_db)):
     suite = await db.get(TestSuite, suite_id)
     if not suite:
         raise HTTPException(status_code=404, detail="Suite not found")
+
+    # The step-tree nodes (case library) live in a separate table with NO
+    # cascade from TestSuite, so they'd leak if we only deleted the suite.
+    # Collect this suite's node ids, clean cross-suite references, then delete.
+    node_ids = [
+        nid for (nid,) in (
+            await db.execute(select(StepNode.id).where(StepNode.suite_id == suite_id))
+        ).all()
+    ]
+
+    if node_ids:
+        # Live-link nodes in OTHER suites that point at a deleted node are now
+        # dangling — remove them.
+        await db.execute(delete(StepNode).where(StepNode.ref_id.in_(node_ids)))
+        # Snapshot-copy provenance pointing at a deleted node loses its source —
+        # clear it (the copy itself stays usable, just untraceable).
+        await db.execute(
+            update(StepNode).where(StepNode.source_id.in_(node_ids)).values(source_id=None)
+        )
+
+    # Delete this suite's step-tree nodes.
+    await db.execute(delete(StepNode).where(StepNode.suite_id == suite_id))
+
+    # Delete the suite (cascade deletes its TestCases, TestRuns, results, step logs).
     await db.delete(suite)
     await db.commit()
 

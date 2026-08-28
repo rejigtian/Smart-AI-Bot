@@ -453,31 +453,47 @@ class TestCaseAgent:
         return f"Unknown tool: {fn_name}"
 
     async def _retrieve_kb(self, query: str) -> tuple[str, str]:
-        """Retrieve test knowledge for a query, merging the project's search CLI
-        (if configured) with local feature docs + dictated notes. Returns
-        (text, source_log). Shared by the opening injection and the agent's
-        on-demand search_knowledge tool, so both see the same knowledge."""
+        """Retrieve knowledge with project-CLI preference and local fallback.
+
+        A successful project CLI result replaces direct scanning of the same
+        project's KB roots, avoiding duplicate context. Local test feature docs
+        and dictated notes still participate. If the CLI is unavailable or
+        returns an error, its diagnostic is discarded and project Markdown is
+        searched as a fallback.
+        """
         kb_parts: list[str] = []
         kb_logs: list[str] = []
+        project_cli_has_results = False
         if self.kb_search_cmd:
             try:
-                from core.kb_search import run_kb_search
-                proj_raw = await asyncio.to_thread(run_kb_search, self.kb_search_cmd, query, 5)
-                if proj_raw:
-                    kb_parts.append(proj_raw)
+                from core.kb_search import run_kb_search_result
+                project_result = await asyncio.to_thread(
+                    run_kb_search_result, self.kb_search_cmd, query, 10
+                )
+                if project_result.succeeded and project_result.text:
+                    kb_parts.append(project_result.text)
                     kb_logs.append(f"项目检索 `{self.kb_search_cmd}`")
-            except Exception:
-                pass
+                    project_cli_has_results = True
+                elif project_result.error:
+                    kb_logs.append(f"项目检索 `{self.kb_search_cmd}` 失败，已回退")
+                else:
+                    kb_logs.append(f"项目检索 `{self.kb_search_cmd}` 无结果，已回退")
+            except Exception as exc:
+                logger.warning("Project KB search failed; using Markdown fallback: %s", exc)
+                kb_logs.append(f"项目检索 `{self.kb_search_cmd}` 异常，已回退")
         try:
             from agent.test_kb import search_feature
             matches: list = []
-            local_raw = search_feature(query, extra_roots=self.project_kb_roots, matches_out=matches)
+            # The CLI already searched the project KB when it returned results;
+            # only scan those roots when the CLI failed or found nothing.
+            fallback_roots = [] if project_cli_has_results else self.project_kb_roots
+            local_raw = search_feature(query, extra_roots=fallback_roots, matches_out=matches)
             if local_raw and matches:
                 kb_parts.append(local_raw)
                 _src = {"project": "项目", "note": "笔记"}
                 kb_logs.append(", ".join(f"{m['title']}「{_src.get(m['source'], '本地')}」" for m in matches))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Local/project Markdown KB search failed: %s", exc)
         return "\n\n---\n\n".join(kb_parts), " + ".join(kb_logs)
 
     async def run(self, case: TestCaseData) -> CaseResult:

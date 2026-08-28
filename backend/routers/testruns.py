@@ -1,6 +1,8 @@
 """Test run management — trigger runs, stream logs via SSE, fetch results."""
 import asyncio
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,10 +16,33 @@ from core.run_recorder import has_recording, recording_path
 from core.test_runner import active_runs, cancel_run, run_log_stream, start_run, start_batch_run
 from db.database import AsyncSessionLocal
 from core.step_tree import NodeRow, chain_to_node
-from db.models import LessonLearned, StepNode, TestCase, TestResult, TestRun, TestStepLog, TestSuite
+from db.models import (
+    QUICK_SUITE_FORMAT,
+    QUICK_SUITE_PREFIX,
+    LessonLearned,
+    StepNode,
+    TestCase,
+    TestResult,
+    TestRun,
+    TestStepLog,
+    TestSuite,
+)
 from ws.portal_ws import connected_devices
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
+
+SETTINGS_PATH = Path(__file__).parent.parent / "data" / "settings.json"
+
+
+def _default_provider_model() -> tuple[str, str]:
+    """Fall back to settings.json's default provider/model when a run request
+    doesn't specify one (so CLI / API callers get the configured LLM, not the
+    hard-coded openai/gpt-4o placeholder)."""
+    try:
+        data = json.loads(SETTINGS_PATH.read_text())
+        return data.get("default_provider") or "openai", data.get("default_model") or "gpt-4o"
+    except Exception:
+        return "openai", "gpt-4o"
 
 
 async def get_db():
@@ -30,21 +55,22 @@ async def get_db():
 class StartRunRequest(BaseModel):
     suite_id: str
     device_id: str
-    provider: str = "openai"
-    model: str = "gpt-4o"
+    provider: str = ""
+    model: str = ""
     max_steps: int = 20
     step_delay: float = 1.0
     max_retries: int = 0
     # Default: run the suite as one tree-aware session (shared navigation runs
     # once). Set true to run each case cold + isolated (max isolation, slower).
     isolated: bool = False
+    mode: str = "ai"        # "ai" (LLM drives each step) | "replay" (deterministic playback)
 
 
 class StartBatchRunRequest(BaseModel):
     suite_id: str
     device_id: str
-    provider: str = "openai"
-    model: str = "gpt-4o"
+    provider: str = ""
+    model: str = ""
     max_steps: int = 20
     base_path: str = ""          # the shared navigation prefix to enter once
     case_ids: List[str]          # the leaf cases to verify in one session
@@ -54,12 +80,13 @@ class QuickRunRequest(BaseModel):
     goal: str
     expected: str = "任务完成"
     device_id: str
-    provider: str = "openai"
-    model: str = "gpt-4o"
+    provider: str = ""
+    model: str = ""
     max_steps: int = 20
     step_delay: float = 1.0
     max_retries: int = 0
     app_package: str = ""  # optional — match a Project Profile to load its KB
+    mode: str = "ai"       # "ai" | "replay"
 
 
 class RunOut(BaseModel):
@@ -168,8 +195,8 @@ async def create_run(req: StartRunRequest, db: AsyncSession = Depends(get_db)):
     run = TestRun(
         suite_id=req.suite_id,
         device_id=req.device_id,
-        provider=req.provider,
-        model=req.model,
+        provider=req.provider or _default_provider_model()[0],
+        model=req.model or _default_provider_model()[1],
         status="pending",
     )
     db.add(run)
@@ -185,8 +212,11 @@ async def create_run(req: StartRunRequest, db: AsyncSession = Depends(get_db)):
     # Launch background task. Default = tree-aware single session (cases already
     # ordered by TestCase.order, i.e. xmind depth-first order, so siblings are
     # adjacent → minimal re-navigation). isolated = legacy cold-run-each.
-    if req.isolated:
-        await start_run(run.id, max_steps=req.max_steps, step_delay=req.step_delay, max_retries=req.max_retries)
+    if req.isolated or req.mode == "replay":
+        # isolated = legacy cold-run-each; replay = deterministic playback
+        # (batch/tree runs are AI-driven, so replay falls back to per-case runs).
+        await start_run(run.id, max_steps=req.max_steps, step_delay=req.step_delay,
+                        max_retries=req.max_retries, mode=req.mode)
     else:
         await start_batch_run(run.id, base_path="", case_ids=[c.id for c in cases], max_steps=req.max_steps)
 
@@ -213,7 +243,7 @@ async def create_batch_run(req: StartBatchRunRequest, db: AsyncSession = Depends
 
     run = TestRun(
         suite_id=req.suite_id, device_id=req.device_id,
-        provider=req.provider, model=req.model, status="pending",
+        provider=req.provider or _default_provider_model()[0], model=req.model or _default_provider_model()[1], status="pending",
     )
     db.add(run)
     await db.flush()
@@ -241,12 +271,12 @@ async def list_runs(
 
 @router.post("/quick", response_model=RunOut, status_code=201)
 async def quick_run(req: QuickRunRequest, db: AsyncSession = Depends(get_db)):
-    """Create a single-case temporary suite and start a run immediately."""
+    """Create an internal single-case container and start a run immediately."""
     conn = connected_devices.get(req.device_id)
     if conn is None or not conn.is_connected:
         raise HTTPException(status_code=400, detail=f"Device {req.device_id} is not connected")
 
-    suite = TestSuite(name=f"快速任务: {req.goal[:60]}", source_format="manual",
+    suite = TestSuite(name=f"{QUICK_SUITE_PREFIX} {req.goal[:60]}", source_format=QUICK_SUITE_FORMAT,
                       app_package=req.app_package or "")
     db.add(suite)
     await db.flush()
@@ -258,8 +288,8 @@ async def quick_run(req: QuickRunRequest, db: AsyncSession = Depends(get_db)):
     run = TestRun(
         suite_id=suite.id,
         device_id=req.device_id,
-        provider=req.provider,
-        model=req.model,
+        provider=req.provider or _default_provider_model()[0],
+        model=req.model or _default_provider_model()[1],
         status="pending",
     )
     db.add(run)
@@ -269,7 +299,8 @@ async def quick_run(req: QuickRunRequest, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(run)
 
-    await start_run(run.id, max_steps=req.max_steps, step_delay=req.step_delay, max_retries=req.max_retries)
+    await start_run(run.id, max_steps=req.max_steps, step_delay=req.step_delay,
+                    max_retries=req.max_retries, mode=req.mode)
     return await _run_out(run, db)
 
 
@@ -284,7 +315,7 @@ async def create_tree_run(req: StartRunRequest, db: AsyncSession = Depends(get_d
     if not targets:
         raise HTTPException(status_code=404, detail="Suite has no step-tree nodes")
     run = TestRun(suite_id=req.suite_id, device_id=req.device_id,
-                  provider=req.provider, model=req.model, status="pending")
+                  provider=req.provider or _default_provider_model()[0], model=req.model or _default_provider_model()[1], status="pending")
     db.add(run); await db.flush()
     for t in targets:
         db.add(TestResult(run_id=run.id, case_id=t.node_id, status="pending"))
@@ -297,8 +328,8 @@ class NodeRunRequest(BaseModel):
     suite_id: str
     device_id: str
     node_id: str
-    provider: str = "openai"
-    model: str = "gpt-4o"
+    provider: str = ""
+    model: str = ""
     max_steps: int = 20
 
 
@@ -313,7 +344,7 @@ async def create_node_run(req: NodeRunRequest, db: AsyncSession = Depends(get_db
     if not targets:
         raise HTTPException(status_code=404, detail="Node not found in this suite's step-tree")
     run = TestRun(suite_id=req.suite_id, device_id=req.device_id,
-                  provider=req.provider, model=req.model, status="pending")
+                  provider=req.provider or _default_provider_model()[0], model=req.model or _default_provider_model()[1], status="pending")
     db.add(run); await db.flush()
     db.add(TestResult(run_id=run.id, case_id=req.node_id, status="pending"))
     await db.commit(); await db.refresh(run)

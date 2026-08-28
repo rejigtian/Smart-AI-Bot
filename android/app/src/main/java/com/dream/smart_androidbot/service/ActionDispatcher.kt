@@ -103,6 +103,18 @@ class ActionDispatcher(context: Context) {
                         .format(java.util.Date()))
             )
 
+            // ── Real-recording control ──────────────────────────────────────
+            // Enables/disables streaming real user interactions (tap/scroll/touch)
+            // back to the server as "record_event" pushes.
+            "start_record" -> {
+                AgentAccessibilityService.recording = true
+                ApiResponse.Success("Recording started")
+            }
+            "stop_record" -> {
+                AgentAccessibilityService.recording = false
+                ApiResponse.Success("Recording stopped")
+            }
+
             else -> ApiResponse.Error("Unknown method: $method")
         }
     }

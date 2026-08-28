@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchSuite, fetchDevices, fetchSettings, fetchTrends, runTree, runNode,
+  fetchSuite, fetchDevices, fetchSettings, fetchTrends, runTree, runNode, startRun,
   TrendPoint, fetchRuns, deleteRun, Run, setSuiteAppPackage,
 } from '../lib/api'
 import StepTreeEditor from '../components/StepTreeEditor'
@@ -189,6 +189,7 @@ export default function SuiteDetail() {
   const [provider, setProvider] = useState('openai')
   const [model, setModel] = useState('gpt-4o')
   const [maxSteps, setMaxSteps] = useState(20)
+  const [mode, setMode] = useState<'ai' | 'replay'>('ai')
   const settingsInitialized = useRef(false)
 
   const DEFAULT_MODELS: Record<string, string> = {
@@ -252,6 +253,16 @@ export default function SuiteDetail() {
     if (!deviceId) { alert(t('请先在右侧选择设备', 'Please select a device on the right first')); return }
     nodeRunMut.mutate(nodeId)
   }
+
+  // Deterministic replay run — executes recorded actions verbatim (no per-step AI).
+  const replayRunMut = useMutation({
+    mutationFn: () => startRun({ suite_id: suiteId!, device_id: deviceId, provider, model, max_steps: maxSteps, mode: 'replay' }),
+    onSuccess: run => navigate(`/runs/${run.id}`),
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || String(e)
+      alert(`${t('回放启动失败', 'Failed to start replay')}: ${msg}`)
+    },
+  })
 
   return (
     <div>
@@ -336,14 +347,52 @@ export default function SuiteDetail() {
               max={100}
             />
 
-            <button
-              className="w-full bg-primary text-white py-2 rounded font-medium hover:bg-primary-deep disabled:opacity-50"
-              disabled={!deviceId || treeRunMut.isPending}
-              onClick={() => treeRunMut.mutate()}
-              title={t('按步骤树做一次深度优先遍历，逐个叶子用例运行；共享前缀只导航一次', 'Run a depth-first traversal of the step tree, running each leaf case one by one; shared prefixes are navigated only once')}
-            >
-              {treeRunMut.isPending ? t('启动中…', 'Starting…') : t('▶ 运行步骤树（DFS）', '▶ Run step tree (DFS)')}
-            </button>
+            {/* Run mode — only recorded suites support replay */}
+            {suite?.source_format === 'recorded' && (
+              <>
+                <label className="block text-sm font-medium mb-1">{t('运行模式', 'Run mode')}</label>
+                <div className="flex gap-2 mb-3">
+                  <button
+                    type="button"
+                    className={`flex-1 px-3 py-1.5 text-sm rounded border ${mode === 'ai' ? 'bg-primary text-white border-transparent' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                    onClick={() => setMode('ai')}
+                  >
+                    {t('AI 执行', 'AI')}
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 px-3 py-1.5 text-sm rounded border ${mode === 'replay' ? 'bg-primary text-white border-transparent' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                    onClick={() => setMode('replay')}
+                  >
+                    {t('回放', 'Replay')}
+                  </button>
+                </div>
+                {mode === 'replay' && (
+                  <p className="mb-3 text-xs text-amber-600">
+                    {t('回放：按录制时的坐标和间隔直接执行，不经过 AI 逐步决策，最后 AI 验证一次。', 'Replay: execute recorded actions verbatim, then verify once.')}
+                  </p>
+                )}
+              </>
+            )}
+
+            {suite?.source_format === 'recorded' && mode === 'replay' ? (
+              <button
+                className="w-full bg-primary text-white py-2 rounded font-medium hover:bg-primary-deep disabled:opacity-50"
+                disabled={!deviceId || replayRunMut.isPending}
+                onClick={() => replayRunMut.mutate()}
+              >
+                {replayRunMut.isPending ? t('启动中…', 'Starting…') : t('▶ 回放', '▶ Replay')}
+              </button>
+            ) : (
+              <button
+                className="w-full bg-primary text-white py-2 rounded font-medium hover:bg-primary-deep disabled:opacity-50"
+                disabled={!deviceId || treeRunMut.isPending}
+                onClick={() => treeRunMut.mutate()}
+                title={t('按步骤树做一次深度优先遍历，逐个叶子用例运行；共享前缀只导航一次', 'Run a depth-first traversal of the step tree, running each leaf case one by one; shared prefixes are navigated only once')}
+              >
+                {treeRunMut.isPending ? t('启动中…', 'Starting…') : t('▶ 运行步骤树（DFS）', '▶ Run step tree (DFS)')}
+              </button>
+            )}
             <p className="mt-2 text-xs text-ink-faint">
               {t('单独跑某个节点：在左侧树里 hover 该节点 → 点「▶ 运行」。', 'To run a single node: hover that node in the tree on the left → click "▶ Run".')}
             </p>

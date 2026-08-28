@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -34,6 +35,69 @@ from ws.portal_ws import connected_devices
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/recorder", tags=["recorder"])
+
+# ── Real-recording session state ──────────────────────────────────────────────
+# While a device is "recording", the Portal streams real user interactions
+# (tap/scroll/input + coordinates) to the server; we buffer them per device so
+# the web UI can show them live and finally save them as a test case.
+_record_events: Dict[str, List[dict]] = {}
+_recording: set = set()
+
+
+def handle_record_event(device_id: str, event: dict) -> None:
+    """Called from portal_ws when the Portal pushes a record_event message."""
+    if device_id not in _recording:
+        return
+    events = _record_events.setdefault(device_id, [])
+    event["seq"] = len(events)
+    # Capture wall-clock time so we can derive inter-action delays for replay.
+    event["ts"] = time.time()
+    events.append(event)
+
+
+def _to_replay_steps(steps: List["RecordedStep"]) -> str:
+    """Convert recorded steps into a deterministic replay plan (JSON string).
+
+    Each entry carries the action + its coordinates/args + delay_ms (time to wait
+    BEFORE executing it). An empty step list → "". Replay runs execute these
+    verbatim, skipping per-step AI decisions.
+    """
+    replay: List[dict] = []
+    for s in steps:
+        args = s.args or {}
+        step: dict = {"kind": s.action, "delay_ms": int(args.get("delay_ms", 0))}
+        if s.action == "tap":
+            if args.get("x") is not None:
+                step["x"] = args.get("x")
+            if args.get("y") is not None:
+                step["y"] = args.get("y")
+            # Also carry element identity (id/text/class) so replay can prefer
+            # element matching over stale coordinates.
+            if args.get("resourceId"):
+                step["resourceId"] = args.get("resourceId")
+            if args.get("text"):
+                step["text"] = args.get("text")
+            if args.get("className"):
+                step["className"] = args.get("className")
+        elif s.action == "tap_element":
+            step["index"] = args.get("index")
+        elif s.action == "scroll":
+            step["direction"] = args.get("direction")
+        elif s.action == "swipe":
+            for k in ("x1", "y1", "x2", "y2", "duration_ms"):
+                if args.get(k) is not None:
+                    step[k] = args[k]
+        elif s.action == "input_text":
+            step["text"] = args.get("text")
+            step["clear"] = bool(args.get("clear", False))
+        elif s.action == "global_action":
+            step["action"] = args.get("action")
+        elif s.action == "press_key":
+            step["key"] = args.get("key")
+        elif s.action == "start_app":
+            step["package"] = args.get("package")
+        replay.append(step)
+    return json.dumps(replay, ensure_ascii=False)
 
 
 # ── Response / Request models ─────────────────────────────────────────────────
@@ -151,6 +215,40 @@ async def _snapshot(device: WebSocketDevice) -> SnapshotResponse:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+@router.post("/record/start")
+async def start_record(device_id: str):
+    """Begin real recording: the Portal starts streaming the user's taps/scrolls."""
+    device = _get_device(device_id)
+    _recording.add(device_id)
+    _record_events[device_id] = []
+    # Tell the Portal to start capturing touch/click events (best-effort; older
+    # builds may not recognise the method yet).
+    try:
+        await device._rpc("start_record", {})
+    except Exception as e:
+        logger.warning("start_record RPC failed (Portal may not support it): %s", e)
+    return {"ok": True, "device_id": device_id}
+
+
+@router.post("/record/stop")
+async def stop_record(device_id: str):
+    """End real recording and return the captured events."""
+    device = _get_device(device_id)
+    _recording.discard(device_id)
+    try:
+        await device._rpc("stop_record", {})
+    except Exception as e:
+        logger.warning("stop_record RPC failed: %s", e)
+    return {"ok": True, "events": _record_events.get(device_id, [])}
+
+
+@router.get("/record/events")
+async def record_events(device_id: str, since: int = 0):
+    """Poll captured record events (incremental via `since`)."""
+    events = _record_events.get(device_id, [])
+    return {"recording": device_id in _recording, "events": events[since:]}
+
+
 @router.get("/snapshot", response_model=SnapshotResponse)
 async def snapshot(device_id: str):
     """Return the current screenshot and a11y element list for a device."""
@@ -248,6 +346,7 @@ async def save_recording(req: SaveRequest):
             path=path,
             expected=req.expected.strip(),
             order=0,
+            replay_steps=_to_replay_steps(req.steps),
         )
         db.add(case)
         await db.commit()
